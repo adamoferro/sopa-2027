@@ -24,7 +24,7 @@ import sys
 import shutil
 import tempfile
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
 
 import matplotlib
 matplotlib.use("Agg")           # non-interactive backend for the test
@@ -32,15 +32,15 @@ matplotlib.use("Agg")           # non-interactive backend for the test
 import numpy as np
 import bitstring as bstr
 
-from input.sharad.instrument import SHARAD
-from input.sharad.data.edr.pds import EDR as EDR_PDS
-from geometry.coordinate_converter import MARS_IAU2000
-from dem.mola.mola import MOLA128
-from processing.parameters import FocuserParameters, SimulatorParameters
-from processing.simulators.sfrssim import sfRSsim
-from processing.focusers.sofa import SOFA
-from io_utils import envi, png as png_io
-from log.log import logger
+from sopa.input.sharad.instrument import SHARAD
+from sopa.input.sharad.data.edr.pds import EDR as EDR_PDS
+from sopa.geometry.coordinate_converter import MARS_IAU2000
+from sopa.dem.mola.mola import MOLA128
+from sopa.processing.parameters import FocuserParameters, SimulatorParameters
+from sopa.processing.simulators.sfrssim import sfRSsim
+from sopa.processing.focusers.sofa import SOFA
+from sopa.io_utils import envi, png as png_io
+from sopa.log.log import logger
 
 
 DATASET_NAME = "e_9999999"
@@ -217,8 +217,8 @@ check("ENVI read-back", sim_back is not None and np.allclose(sim_back, sim_image
 # 8) plots (non-interactive backend, only checking code paths)
 # --------------------------------------------------------------------------- #
 print("8) testing plot classes (Agg backend)...")
-from plot_utils.tracks import TrackPlotOnDEM, TrackAndFirstReturnsPlotOnDEM
-from plot_utils.radargrams import SimulationPlot, GroundDistancePlot, RadargramPlot
+from sopa.plot_utils.tracks import TrackPlotOnDEM, TrackAndFirstReturnsPlotOnDEM
+from sopa.plot_utils.radargrams import SimulationPlot, GroundDistancePlot, RadargramPlot
 top_point = int(np.min(np.argmin(np.isnan(gd_min_image).astype(int), axis=0)))
 plots_ok = True
 try:

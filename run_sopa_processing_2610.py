@@ -21,20 +21,24 @@
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
 
+import os
 import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+
 import numpy as np
-from log.log import logger
-from input.sharad.instrument import SHARAD
-from input.sharad.data.edr.pds import EDR as EDR_PDS
-from geometry.coordinate_converter import MARS_IAU2000
-from dem.mola.mola import MOLA128
-from processing.parameters import FocuserParameters
-from processing.simulators.sfrssim import sfRSsim
+from sopa.log.log import logger
+from sopa.input.sharad.instrument import SHARAD
+from sopa.input.sharad.data.edr.pds import EDR as EDR_PDS
+from sopa.geometry.coordinate_converter import MARS_IAU2000
+from sopa.dem.mola.mola import MOLA128
+from sopa.processing.parameters import FocuserParameters
+from sopa.processing.simulators.sfrssim import sfRSsim
 # from processing.simulators.drssim import dRSsim         # uncomment if needed
-from processing.focusers.sofa import SOFA
-from io_utils import envi
-from plot_utils.tracks import TrackPlotOnDEM, TrackAndFirstReturnsPlotOnDEM
-from plot_utils.radargrams import SimulationPlot, GroundDistancePlot, RadargramPlot
+from sopa.processing.focusers.sofa import SOFA
+from sopa.io_utils import envi
+from sopa.plot_utils.tracks import TrackPlotOnDEM, TrackAndFirstReturnsPlotOnDEM
+from sopa.plot_utils.radargrams import SimulationPlot, GroundDistancePlot, RadargramPlot
 
 
 def main(argv=None):

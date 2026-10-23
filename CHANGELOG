@@ -1,3 +1,11 @@
+Oct 23, 2026
+- restructured the suite into a pip-installable src-layout package: all code
+  modules moved under src/sopa/ (e.g. "from sopa.io_utils import envi"),
+  with __init__.py in every package and absolute sopa.* imports throughout
+- added pyproject.toml (setuptools backend, PEP 639 license metadata);
+  editable install supported; scripts in tests/ and the example program
+  still run from the tree without installing
+
 Sep ***, 2022
 - added png writer
 - added handling of corrupted data in PDS EDRs

@@ -52,6 +52,19 @@ python3 -m venv --without-pip /home/ferroa/venvs/sopa_2027
 /home/ferroa/venvs/sopa_2026/bin/python -m pip --python /home/ferroa/venvs/sopa_2027/bin/python install -r requirements.txt
 ```
 
+## Installation
+
+The code is a pip-installable src-layout package (`import sopa`):
+
+```bash
+source /home/ferroa/venvs/sopa_2027/bin/activate
+pip install --no-deps -e /mnt/SOPA/SOPA_2027
+```
+
+`--no-deps` leaves the pinned environment of `requirements.txt` untouched.
+The scripts in `tests/` and the `run_sopa_processing_2610.py` example also run
+from the tree without any install (they add `src/` to `sys.path` themselves).
+
 ## Running
 
 ```bash
