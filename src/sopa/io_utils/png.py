@@ -24,6 +24,7 @@
 import sys
 import png
 import numpy as np
+import numpy.typing as npt
 
 TOP_NOISE_SAMPLES = 100
 
@@ -35,7 +36,7 @@ DYN_RANGE_HIGH_DB = 30
 PERC_MIN_THR = 70
 PERC_MAX_THR = 99.8
 
-def write(filename, np_array, sim_data=False):
+def write(filename: str, np_array: npt.NDArray, sim_data: bool = False) -> bool:
     if (np_array.dtype.name == "complex64" or np_array.dtype.name == "complex128"):
         np_array_tmp = np.abs(np_array).astype("float64")**2.
     else:

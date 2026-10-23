@@ -27,15 +27,17 @@
 # - estimate of average number of frames corresponding to the defined squint offset using only the frames required for processing and not the whole track
 
 import numpy as np
+import numpy.typing as npt
 from scipy.ndimage import gaussian_filter1d
 from sopa.processing.utils import ProcessingUtils
+from typing import Any
 
 
 class SOFA(object):
     """docstring for SOFA."""
     _C = 299792458.
 
-    def __init__(self, instr_obj, geom_obj, dem_radius_profile, data_obj, param_obj, n_processes=1, read_block_size_max=5000, debug_mode=False):
+    def __init__(self, instr_obj: Any, geom_obj: Any, dem_radius_profile: npt.NDArray[np.int32], data_obj: Any, param_obj: Any, n_processes: int = 1, read_block_size_max: int = 5000, debug_mode: bool = False) -> None:
         self.geom_obj = geom_obj
         self.data_obj = data_obj
 
@@ -151,7 +153,7 @@ class SOFA(object):
             else:
                 self._azimuth_weighting_window_original = eval("np." + awfs + "(self._n_aperture_frames)")
 
-    def focus(self):
+    def focus(self) -> npt.NDArray[np.float64] | None:
 
         if self._frames_to_be_focused_end >= self._n_input_frames:
             print("ERROR: last frame to be focused after the end of the input data.")
@@ -321,7 +323,7 @@ class SOFA(object):
         return output_image
 
     @staticmethod
-    def _block_focus(block_id, input_data_frame_start, input_data_frame_end, frames_to_be_focused_in_this_block, frames_to_be_processed_start, sizeFFT1, data_samples, phasor, c, wc, input_rxwin_data_t, chirp_fft_conj, N_OUTPUT_SAMPLES, OUTPUT_SAMPLES, dt_compr, input_scr_data, input_theta, input_phi, n_half_aperture_frames, n_aperture_frames, CORRECT_RANGE_MIGRATION, input_scx_data, input_scy_data, input_scz_data, USE_DOPPLER_CORRECTION, lmbda_min, azimuth_weighting_windows, N_GAUSSIAN_FILTERS, std_devs, gf_power_coefficients, doppler_half_window_width, squint_offset_approx_frames, t_frame_base, dem_radius_profile, fftfreqs, delay_start_shifts, data_obj, geom_obj):
+    def _block_focus(block_id: int, input_data_frame_start: int, input_data_frame_end: int, frames_to_be_focused_in_this_block: npt.NDArray[np.int64], frames_to_be_processed_start: int, sizeFFT1: int, data_samples: npt.NDArray[np.int64], phasor: npt.NDArray[np.complex128], c: float, wc: float, input_rxwin_data_t: npt.NDArray[np.float64], chirp_fft_conj: npt.NDArray[np.complex128], N_OUTPUT_SAMPLES: int, OUTPUT_SAMPLES: npt.NDArray[np.int64], dt_compr: float, input_scr_data: npt.NDArray[np.float64], input_theta: npt.NDArray[np.float64], input_phi: npt.NDArray[np.float64], n_half_aperture_frames: int, n_aperture_frames: int, CORRECT_RANGE_MIGRATION: bool, input_scx_data: npt.NDArray[np.float64], input_scy_data: npt.NDArray[np.float64], input_scz_data: npt.NDArray[np.float64], USE_DOPPLER_CORRECTION: bool, lmbda_min: float, azimuth_weighting_windows: npt.NDArray[np.float64], N_GAUSSIAN_FILTERS: int, std_devs: list[float], gf_power_coefficients: list[float], doppler_half_window_width: int, squint_offset_approx_frames: int, t_frame_base: npt.NDArray[np.float64], dem_radius_profile: npt.NDArray[np.int32], fftfreqs: npt.NDArray[np.float64], delay_start_shifts: npt.NDArray[np.float64], data_obj: Any, geom_obj: Any) -> tuple[npt.NDArray[np.float64], float, float]:
 
         input_data = data_obj.data[:, input_data_frame_start:input_data_frame_end]
         read_block_size_real = input_data.shape[1]

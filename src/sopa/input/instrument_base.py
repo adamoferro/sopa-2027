@@ -24,7 +24,7 @@
 class RSInstrument():
     """docstring for RSInstrument."""
 
-    def __init__(self, name, frequency, bandwidth, fast_time_sampling_frequency, chirp_duration, ref_v_platform):
+    def __init__(self, name: str, frequency: float, bandwidth: float, fast_time_sampling_frequency: float, chirp_duration: float, ref_v_platform: float) -> None:
         self.name = name
         self.frequency = frequency                                          # Hz
         self.bandwidth = bandwidth                                          # Hz
@@ -32,5 +32,5 @@ class RSInstrument():
         self.chirp_duration = chirp_duration                                # s
         self.ref_v_platform = ref_v_platform                                # m/s
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.name + ", fc="+"{:.1f}".format(self.frequency/1e6) + " MHz, fb=" + "{:.1f}".format(self.bandwidth/1e6) + " MHz"

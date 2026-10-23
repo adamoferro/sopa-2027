@@ -26,12 +26,14 @@
 
 from sopa.log.log import fake_logger
 import gzip
+import numpy.typing as npt
+from typing import Any
 
 
 class RSData():
     """docstring for RSData."""
 
-    def __init__(self, dataset_name="no name", pri=0, presumming=0, filename_base="", use_gzip_and_iso8859_1=False, logger=None):
+    def __init__(self, dataset_name: str = "no name", pri: float = 0, presumming: int = 0, filename_base: str = "", use_gzip_and_iso8859_1: bool = False, logger: Any = None) -> None:
         self.dataset_name = dataset_name
         self.n_frames = 0
         self.pri = pri                      # in s
@@ -55,12 +57,12 @@ class RSData():
         else:
             self.logger = logger
 
-    def _correct_lon(self):
+    def _correct_lon(self) -> None:
         if self._orbit_data is not None:
             self._orbit_data["Lon"][self._orbit_data["Lon"] < 0] = 360 + self._orbit_data["Lon"][self._orbit_data["Lon"] < 0]
 
     @property
-    def data(self):
+    def data(self) -> npt.NDArray | None:
         if self._data is None:
             print("ERROR: data not yet read.")
             return None
@@ -68,11 +70,11 @@ class RSData():
             return self._data
 
     @data.setter
-    def data(self, value):
+    def data(self, value: npt.NDArray) -> None:
         print("ERROR: cannot set data manually.")
 
     @property
-    def orbit_data(self):
+    def orbit_data(self) -> dict[str, npt.NDArray | float] | None:
         if self._orbit_data is None:
             print("ERROR: orbit data not yet generated.")
             return None
@@ -80,27 +82,27 @@ class RSData():
             return self._orbit_data
 
     @orbit_data.setter
-    def orbit_data(self, value):
+    def orbit_data(self, value: dict[str, npt.NDArray | float]) -> None:
         print("ERROR: cannot set orbit data manually.")
 
-    def __str__(self):
+    def __str__(self) -> str:
         output_str = self.dataset_name + ", n_frames=" + str(self.n_frames) + ", PRI=" + "{:.1f}".format(self.pri*1e6) + " us, presum=" + str(self.presumming)
         if self.filename_base != "":
             output_str += ", base filename: " + self.filename_base
         return output_str
 
-    def load(self, mode="full", force_reload=False):            # mode can be: "all", "ancillary", "data". Not all implementation may be able to provide different behaviors
+    def load(self, mode: str = "full", force_reload: bool = False) -> bool | None:            # mode can be: "all", "ancillary", "data". Not all implementation may be able to provide different behaviors
         if self.filename_base != "":
             return self._load_from_file(mode, force_reload)
         else:
             print("ERROR: dataset base filename not set.")
             return False
 
-    def set_orbit_data_from_ext(self, ext_orbit_data):
+    def set_orbit_data_from_ext(self, ext_orbit_data: dict[str, npt.NDArray | float]) -> None:
         self._orbit_data = ext_orbit_data
 
-    def _load_from_file(self, mode, force_reload):      # "virtual" method
+    def _load_from_file(self, mode: str | None, force_reload: bool) -> bool | None:      # "virtual" method
         raise NotImplementedError
 
-    def generate_orbit_data(self, skip):                # generates orbit data which match 1:1 with the data
+    def generate_orbit_data(self, skip: int) -> None:                # generates orbit data which match 1:1 with the data
         raise NotImplementedError

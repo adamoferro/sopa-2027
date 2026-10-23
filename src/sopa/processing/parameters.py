@@ -28,7 +28,7 @@
 
 
 class _BaseProcessingParameters():
-    def __init__(self, frame_start=0, frame_end=-1, frame_skip=1, meters_skip=None, frame_half_aperture=768, squint_angle=0, range_weighting_function="hanning", range_weighting_kaiser_beta=2):
+    def __init__(self, frame_start: int = 0, frame_end: int = -1, frame_skip: int = 1, meters_skip: float | None = None, frame_half_aperture: int = 768, squint_angle: float = 0, range_weighting_function: str = "hanning", range_weighting_kaiser_beta: float = 2) -> None:
         # frame_half_aperture               samples
         # squint_angle                      degrees
         # range_weighting_function          ["hanning","hamming","kaiser","none"]
@@ -51,12 +51,12 @@ class _BaseProcessingParameters():
 
 
 class SimulatorParameters(_BaseProcessingParameters):
-    def __init__(self, frame_start=0, frame_end=-1, frame_skip=1, meters_skip=None, frame_half_aperture=768, squint_angle=0, range_weighting_function="hanning", range_weighting_kaiser_beta=2):
+    def __init__(self, frame_start: int = 0, frame_end: int = -1, frame_skip: int = 1, meters_skip: float | None = None, frame_half_aperture: int = 768, squint_angle: float = 0, range_weighting_function: str = "hanning", range_weighting_kaiser_beta: float = 2) -> None:
         super().__init__(frame_start, frame_end, frame_skip, meters_skip, frame_half_aperture, squint_angle, range_weighting_function, range_weighting_kaiser_beta)
 
 
 class FocuserParameters(_BaseProcessingParameters):
-    def __init__(self, frame_start=0, frame_end=-1, frame_skip=1, meters_skip=None, frame_half_aperture=768, squint_angle=0, multilooking_doppler_bandwidth=0.8, correct_range_migration=True, compensate_doppler_phase=True, range_weighting_function="hanning", range_weighting_kaiser_beta=2, azimuth_weighting_function="hanning", azimuth_weighting_kaiser_beta=2, gauss_rec_n_filters=0, gauss_rec_alpha=0.66):
+    def __init__(self, frame_start: int = 0, frame_end: int = -1, frame_skip: int = 1, meters_skip: float | None = None, frame_half_aperture: int = 768, squint_angle: float = 0, multilooking_doppler_bandwidth: float = 0.8, correct_range_migration: bool = True, compensate_doppler_phase: bool = True, range_weighting_function: str = "hanning", range_weighting_kaiser_beta: float = 2, azimuth_weighting_function: str = "hanning", azimuth_weighting_kaiser_beta: float = 2, gauss_rec_n_filters: int = 0, gauss_rec_alpha: float = 0.66) -> None:
         # multilooking_doppler_bandwidth    Hz
         # correct_range_migration           boolean
         # compensate_doppler_phase          boolean

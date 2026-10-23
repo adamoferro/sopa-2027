@@ -22,6 +22,7 @@
 #   must be acknowledged.
 
 import numpy as np
+import numpy.typing as npt
 import math
 
 
@@ -29,7 +30,7 @@ class CoordinateConverter():
     _deg2rad = math.pi / 180.0
     _rad2deg = 180.0 / math.pi
 
-    def __init__(self, ellipsoid_name="", eer=0, epr=0, mr=0):
+    def __init__(self, ellipsoid_name: str = "", eer: float = 0, epr: float = 0, mr: float = 0) -> None:
         self._ELLIPSOID_EQUATOR_RADIUS = eer
         self._ELLIPSOID_POLAR_RADIUS = epr
         self._MEAN_RADIUS = mr
@@ -37,15 +38,15 @@ class CoordinateConverter():
         self._ECCENTRICITY_SQUARED = (eer**2 - epr**2) / eer**2
 
     @staticmethod
-    def euclidean_distance_cart(x1, y1, z1, x2, y2, z2):
+    def euclidean_distance_cart(x1: npt.ArrayLike, y1: npt.ArrayLike, z1: npt.ArrayLike, x2: npt.ArrayLike, y2: npt.ArrayLike, z2: npt.ArrayLike) -> npt.NDArray[np.float64]:
         return np.sqrt((x1-x2)**2+(y1-y2)**2+(z1-z2)**2)
 
     @staticmethod
-    def to_radius_from_xyz(xcart, ycart, zcart):
+    def to_radius_from_xyz(xcart: npt.ArrayLike, ycart: npt.ArrayLike, zcart: npt.ArrayLike) -> npt.NDArray[np.float64]:
         return np.sqrt(xcart * xcart + ycart * ycart + zcart * zcart)
 
     @classmethod
-    def to_xyz_from_latlon_and_radius(cls, latitude, longitude, radius):
+    def to_xyz_from_latlon_and_radius(cls, latitude: npt.ArrayLike, longitude: npt.ArrayLike, radius: npt.ArrayLike) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
         latitude = (90. - latitude) * cls._deg2rad
         longitude_w = (longitude - 180.) * cls._deg2rad
         xcart = -radius * np.cos(longitude_w) * np.sin(latitude)
@@ -54,13 +55,13 @@ class CoordinateConverter():
         return xcart, ycart, zcart
 
     @classmethod
-    def add_radius_offset_to_orbit(cls, orbit_data, offset_array):
+    def add_radius_offset_to_orbit(cls, orbit_data: dict[str, npt.NDArray[np.float64] | float], offset_array: npt.NDArray[np.float64]) -> dict[str, npt.NDArray[np.float64] | float]:
         new_orbit_data = orbit_data.copy()
         new_orbit_data["Radius"] = orbit_data["Radius"] + offset_array
         new_orbit_data["X"], new_orbit_data["Y"], new_orbit_data["Z"] = cls.to_xyz_from_latlon_and_radius(orbit_data["Lat"], orbit_data["Lon"], new_orbit_data["Radius"])
         return new_orbit_data
 
-    def to_latlon_area_from_circle_area(self, lat, lon, radius):
+    def to_latlon_area_from_circle_area(self, lat: float, lon: float, radius: float) -> tuple[float, float, float, float] | None:
         lat_n = 0
         lat_s = 0
         lon_e = 0
@@ -90,7 +91,7 @@ class CoordinateConverter():
 
         return lat_n, lat_s, lon_e, lon_w
 
-    def get_frame_ids_from_skip_distance(self, lat, lon, skip_distance):
+    def get_frame_ids_from_skip_distance(self, lat: npt.NDArray[np.float64], lon: npt.NDArray[np.float64], skip_distance: float) -> tuple[npt.NDArray[np.int64], float, float]:
         '''
         Find the frame ids of frames approximately equally separated by
         skip_distance meters. The distance is calculated as the euclidean
@@ -119,12 +120,12 @@ class CoordinateConverter():
 
         return i, min_n_frames_per_interval, max_n_frames_per_interval
 
-    def get_ellipsoid_radius_from_latlon(self, latitude, longitude):
+    def get_ellipsoid_radius_from_latlon(self, latitude: npt.ArrayLike, longitude: npt.ArrayLike) -> npt.NDArray[np.float64]:
         latitude = latitude * math.pi / 180.
         ellipsoid_local_radius = np.sqrt(self._ELLIPSOID_EQUATOR_RADIUS**2 / (1 + (1. / ((1 - self._FLATTENING)**2) - 1)*(np.sin(latitude)**2)))
         return ellipsoid_local_radius
 
-    def get_ellipsoid_xyz_from_latlon(self, latitude, longitude):
+    def get_ellipsoid_xyz_from_latlon(self, latitude: npt.ArrayLike, longitude: npt.ArrayLike) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
         radius = self.get_ellipsoid_radius_from_latlon(latitude, longitude)
         # latitude = latitude * math.pi / 180.
         # longitude_w = (longitude - 180.) * math.pi / 180.
@@ -134,12 +135,12 @@ class CoordinateConverter():
     # by David Wolever @ http://stackoverflow.com/questions/2827393/angles-between-two-n-dimensional-vectors-in-python
     # extended for matrix use by Adamo Ferro
     @staticmethod
-    def unit_vector(vector):
+    def unit_vector(vector: npt.ArrayLike) -> npt.NDArray[np.float64]:
         """ Returns the unit vector of the vector.  """
         return vector / np.linalg.norm(vector, axis=0)
 
     @staticmethod
-    def angle_between(v1, v2):
+    def angle_between(v1: npt.ArrayLike, v2: npt.ArrayLike) -> float | npt.NDArray[np.float64]:
         """ Returns the angle in radians between vectors 'v1' and 'v2'::
 
                 >>> angle_between((1, 0, 0), (0, 1, 0))
@@ -170,7 +171,7 @@ class CoordinateConverter():
             angle[nans] = (((v1_u[:, nans] == v2_u[:, nans]).all()) * np.pi)
         return angle
 
-    def LL_to_UTM(self, LatInput, LongInput):
+    def LL_to_UTM(self, LatInput: npt.NDArray[np.float64] | float, LongInput: npt.NDArray[np.float64] | float) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], list[str], npt.NDArray[np.int64]]:
         """
         converts lat/long to UTM coords.  Equations from USGS Bulletin 1532
         East Longitudes are positive, West longitudes are negative.
@@ -255,7 +256,7 @@ class CoordinateConverter():
 
         return (UTMNorthing, UTMEasting, UTMZone, ZoneNumber)
 
-    def LL_to_UTM_with_given_zone_number(self, LatInput, LongInput, ZoneNumber):
+    def LL_to_UTM_with_given_zone_number(self, LatInput: npt.NDArray[np.float64] | float, LongInput: npt.NDArray[np.float64] | float, ZoneNumber: npt.NDArray[np.int64] | int) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
 
         # same as LLtoUTM, but the zone is given by the user
         if len(LatInput.shape)==0:
@@ -314,7 +315,7 @@ class CoordinateConverter():
 
         return (UTMNorthing, UTMEasting)
 
-    def UTMLetterDesignator(self, LatDataInput):
+    def UTMLetterDesignator(self, LatDataInput: npt.NDArray[np.float64] | float) -> list[str]:
         """
         This routine determines the correct UTM letter designator for the given latitude
         returns 'Z' if latitude is outside the UTM limits of 84N to 80S
@@ -378,7 +379,7 @@ class CoordinateConverter():
             Letter_designator_list.append(LetterDesignator)
         return Letter_designator_list
 
-    def UTM_to_LL(self, UTMNorthing, UTMEasting, fixed_UTMZone):
+    def UTM_to_LL(self, UTMNorthing: npt.NDArray[np.float64], UTMEasting: npt.NDArray[np.float64], fixed_UTMZone: str) -> tuple[npt.NDArray[np.float64] | float, npt.NDArray[np.float64] | float]:
         """
         converts UTM coords to lat/long.  Equations from USGS Bulletin 1532
         East Longitudes are positive, West longitudes are negative.
@@ -455,5 +456,5 @@ class CoordinateConverter():
 
 
 class MARS_IAU2000(CoordinateConverter):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("Mars (IAU2000)", 3396190., 3376200., 3389500.)

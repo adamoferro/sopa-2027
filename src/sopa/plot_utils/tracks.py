@@ -24,12 +24,14 @@
 from matplotlib import pyplot as pp
 import matplotlib.patches as mpatches
 import numpy as np
+import numpy.typing as npt
+from typing import Any
 
 
 class TrackPlotOnDEM(object):
     """docstring"""
 
-    def __init__(self, dem_obj, track_lats, track_lons, auto_show=False, title=None):
+    def __init__(self, dem_obj: Any, track_lats: npt.NDArray[np.float64], track_lons: npt.NDArray[np.float64], auto_show: bool = False, title: str | None = None) -> None:
         self._dem_obj = dem_obj
         self._track_lats = track_lats
         self._track_lons = track_lons
@@ -40,7 +42,7 @@ class TrackPlotOnDEM(object):
         else:
             self._title = "Spacecraft ground track on DEM [km]"
 
-    def _calculate_xy_limits(self, lats, lons):
+    def _calculate_xy_limits(self, lats: npt.NDArray[np.float64], lons: npt.NDArray[np.float64]) -> tuple[int, int, int, int, npt.NDArray[np.float64], npt.NDArray[np.float64]]:
         sc_track_x, sc_track_y = self._dem_obj.to_XY_from_LL(lats, lons, return_as_float=True)
         min_x = int(np.floor(np.min(sc_track_x)))
         max_x = int(np.ceil(np.max(sc_track_x)))
@@ -48,7 +50,7 @@ class TrackPlotOnDEM(object):
         max_y = int(np.ceil(np.max(sc_track_y)))
         return min_x, max_x, min_y, max_y, sc_track_x, sc_track_y
 
-    def _create_labels(self, max_lat, min_lat, max_long, min_long):
+    def _create_labels(self, max_lat: float, min_lat: float, max_long: float, min_long: float) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.int64], npt.NDArray[np.int64]]:
         lat_range = np.round(np.arange(max_lat, min_lat, -self._dem_obj.deg_sampling)*100)/100
         lat_range_len = len(lat_range)
         long_range = np.round(np.arange(min_long, max_long, self._dem_obj.deg_sampling)*100)/100
@@ -61,7 +63,7 @@ class TrackPlotOnDEM(object):
         labels_y = lat_range[::step_y]
         return labels_x, labels_y, labels_x_pos, labels_y_pos
 
-    def plot(self):
+    def plot(self) -> None:
         min_x, max_x, min_y, max_y, sc_track_x, sc_track_y = self._calculate_xy_limits(self._track_lats, self._track_lons)
 
         min_lat, min_long = self._dem_obj.to_LL_from_XY(min_x, max_y)
@@ -81,7 +83,7 @@ class TrackPlotOnDEM(object):
         pp.colorbar()
         self.show(explicit=False)
 
-    def show(self, explicit=True):
+    def show(self, explicit: bool = True) -> None:
         if explicit or self._auto_show:
             pp.show()
 
@@ -89,7 +91,7 @@ class TrackPlotOnDEM(object):
 class TrackAndFirstReturnsPlotOnDEM(TrackPlotOnDEM):
     """docstring"""
 
-    def __init__(self, dem_obj, track_lats, track_lons, fr_lats, fr_lons, auto_show=False, title=None):
+    def __init__(self, dem_obj: Any, track_lats: npt.NDArray[np.float64], track_lons: npt.NDArray[np.float64], fr_lats: npt.NDArray[np.float64], fr_lons: npt.NDArray[np.float64], auto_show: bool = False, title: str | None = None) -> None:
         super().__init__(dem_obj, track_lats, track_lons, auto_show=auto_show, title=None)
         self._fr_lats = fr_lats
         self._fr_lons = fr_lons
@@ -98,7 +100,7 @@ class TrackAndFirstReturnsPlotOnDEM(TrackPlotOnDEM):
         else:
             self._title = "Spacecraft ground track (yellow) vs.\nsimulated first return positions (magenta) on DEM [km]"
 
-    def plot(self):
+    def plot(self) -> None:
         min_x, max_x, min_y, max_y, fr_x, fr_y = self._calculate_xy_limits(self._fr_lats, self._fr_lons)
         _, _, _, _, sc_track_x, sc_track_y = self._calculate_xy_limits(self._track_lats, self._track_lons)
 
@@ -147,7 +149,7 @@ class TrackAndROIReturnsPlotOnDEM(TrackPlotOnDEM):
     ref_max_angle = np.deg2rad(1)
     ref_max_alt_angle_deg = 1
 
-    def __init__(self, dem_obj, track_lats, track_lons, roi_pos, plot_alt_angle=False, auto_show=False, title=None):
+    def __init__(self, dem_obj: Any, track_lats: npt.NDArray[np.float64], track_lons: npt.NDArray[np.float64], roi_pos: tuple[dict[int, npt.NDArray[np.float64]], ...], plot_alt_angle: bool = False, auto_show: bool = False, title: str | None = None) -> None:
         super().__init__(dem_obj, track_lats, track_lons, auto_show=auto_show, title=None)
         self._roi_lats = roi_pos[0]
         if len(self._roi_lats) > 0:
@@ -166,7 +168,7 @@ class TrackAndROIReturnsPlotOnDEM(TrackPlotOnDEM):
         else:
             self._NO_ROIS = True
 
-    def plot(self):
+    def plot(self) -> None:
         if self._NO_ROIS:
             print("ERROR: no ROIs to plot.")
         else:

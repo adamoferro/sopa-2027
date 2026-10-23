@@ -27,5 +27,5 @@ from sopa.input.instrument_base import RSInstrument
 class SHARAD(RSInstrument):
     """docstring for SHARAD."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("SHARAD", 20e6, 10e6, 80e6/3., 85.05e-6, 3397.)

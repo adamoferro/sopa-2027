@@ -29,10 +29,12 @@ from sopa.input.sharad.data.rdr import pds_log as log_messages
 from sopa.geometry.coordinate_converter import CoordinateConverter
 import os
 import numpy as np
+import numpy.typing as npt
+from typing import Any
 
 
 class RDR(RSData):
-    def __init__(self, dataset_name="no name", pri=0, presumming=0, filename_base="", use_gzip_and_iso8859_1=False, logger=None, read_hk_data=False):
+    def __init__(self, dataset_name: str = "no name", pri: float = 0, presumming: int = 0, filename_base: str = "", use_gzip_and_iso8859_1: bool = False, logger: Any = None, read_hk_data: bool = False) -> None:
         super().__init__(dataset_name, pri, presumming, filename_base, use_gzip_and_iso8859_1, logger)
 
         # input file suffixes
@@ -68,14 +70,14 @@ class RDR(RSData):
 
         self._data_type = "focused"
 
-    def _load_from_file(self, mode=None, force_reload=False):      # filename_base is set, checked by super
+    def _load_from_file(self, mode: str | None = None, force_reload: bool = False) -> bool | None:      # filename_base is set, checked by super
         # no "mode", only "data" because everything is contained in one file
         if self._check_file_presence():
             if ((not self._data_already_read) or force_reload):
                 return self._load_rdr_data()
         return False
 
-    def _check_file_presence(self):
+    def _check_file_presence(self) -> bool:
         self._HEADER_FILENAME = self.filename_base + self._HEADER_SUFFIX
         if os.path.isfile(self._HEADER_FILENAME):
             return self._check_file_presence_data()
@@ -83,7 +85,7 @@ class RDR(RSData):
             self.logger.log_messages(log_messages.ERR_MESSAGES["other_file_not-found"])
         return False
 
-    def _check_file_presence_data(self):
+    def _check_file_presence_data(self) -> bool:
         self._DATA_FILENAME = self.filename_base + self._DATA_SUFFIX
         if os.path.isfile(self._DATA_FILENAME):
             return True
@@ -91,7 +93,7 @@ class RDR(RSData):
             self.logger.log_messages(log_messages.ERR_MESSAGES["other_file_not-found"])
         return False
 
-    def _decode_im(self, im):
+    def _decode_im(self, im: int) -> int:
         '''
         service function that returns a tuple containing the
         main parameters of the acquisition mode
@@ -99,7 +101,7 @@ class RDR(RSData):
         id = self._IMS.index(im)
         return self._IM_PRESUMMING[id]
 
-    def _read_rdr_data_header(self):
+    def _read_rdr_data_header(self) -> tuple[dict[str, Any], str] | None:
         try:
             with self.open_function(self._HEADER_FILENAME, mode="rt", encoding=self.encoding) as fp:
                 header_data = dict()
@@ -138,7 +140,7 @@ class RDR(RSData):
         return None
 
     @staticmethod
-    def _correct_range_shift(data, range_shifts):
+    def _correct_range_shift(data: npt.NDArray[np.complex64], range_shifts: npt.NDArray[np.int16]) -> npt.NDArray[np.complex64]:
         ref_range_shift = range_shifts.max()
         frame_shifts = np.round((ref_range_shift - range_shifts) / 2).astype("int")      # range_shifts are expressed in ADC sampling time, that it one half of RDR radargram sample time
         zero_padding_length = frame_shifts.max()
@@ -147,7 +149,7 @@ class RDR(RSData):
             zero_padded_data[frame_shifts[i_f]:frame_shifts[i_f]+data.shape[0], i_f] = data[:, i_f]
         return zero_padded_data
 
-    def _load_rdr_data(self, start_frame=0, end_frame=-1):
+    def _load_rdr_data(self, start_frame: int = 0, end_frame: int = -1) -> bool | None:
         if not self._header_already_read:
             # header parsing
             header_data_grouped = self._read_rdr_data_header()
@@ -242,7 +244,7 @@ class RDR(RSData):
             self.logger.log_messages(log_messages.ERR_MESSAGES["data_read"])
         return False
 
-    def generate_orbit_data(self, skip=1):
+    def generate_orbit_data(self, skip: int = 1) -> None:
         '''
         Saves in self._orbit_data the following fields as a dictionary,
         interpolated to match 1:skip the frames of the raw data:

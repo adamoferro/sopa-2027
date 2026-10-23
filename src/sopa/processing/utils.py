@@ -22,15 +22,16 @@
 #   must be acknowledged.
 
 import numpy as np
+import numpy.typing as npt
 from scipy.signal import chirp
 
 
 class ProcessingUtils():
-    def __init__(self):
+    def __init__(self) -> None:
         pass
 
     @staticmethod
-    def create_synthetic_chirp_conj(frequency, bandwidth, chirp_duration, fast_time_sampling_frequency, range_weighting_window_original, SIZE_RANGE_FFT):
+    def create_synthetic_chirp_conj(frequency: float, bandwidth: float, chirp_duration: float, fast_time_sampling_frequency: float, range_weighting_window_original: npt.NDArray[np.float64] | float, SIZE_RANGE_FFT: int) -> npt.NDArray[np.complex128]:
         t_chirp = np.arange(0, chirp_duration, 1. / fast_time_sampling_frequency)
         range_weighting_window = np.concatenate((range_weighting_window_original, np.zeros(int(SIZE_RANGE_FFT/2))), 0)
 

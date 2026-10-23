@@ -25,6 +25,7 @@
 
 from sopa.dem.dem_base import DEMBase
 import numpy as np
+import numpy.typing as npt
 import scipy.ndimage as snd
 from sopa.io_utils import envi
 
@@ -32,7 +33,7 @@ from sopa.io_utils import envi
 class MOLA(DEMBase):
     """MOLA MEGDR 1/X degrees DEM"""
 
-    def __init__(self, dem_name="MOLA", filename_base="", image=None, dummy_value=0, max_lat=88, min_long=0, sampling_den=128):
+    def __init__(self, dem_name: str = "MOLA", filename_base: str = "", image: npt.NDArray[np.int16] | npt.NDArray[np.float64] | None = None, dummy_value: int = 0, max_lat: float = 88, min_long: float = 0, sampling_den: float = 128) -> None:
         super().__init__(dem_name, filename_base, dummy_value)
         self._MOLA_MAX_LAT = max_lat        # degrees
         self._MOLA_MIN_LONG = min_long      # degrees
@@ -51,15 +52,15 @@ class MOLA(DEMBase):
             self.dem = image.copy()
             self._set_info()
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.dem_name + ", base filename: " + self.filename_base + ", extension: lat " + str(self._MOLA_MIN_LAT) + ", " + str(self._MOLA_MAX_LAT) + "; long " + str(self._MOLA_MIN_LONG) + ", " + str(self._MOLA_MAX_LONG)
 
-    def _set_info(self):
+    def _set_info(self) -> None:
         self.dem_shape = self.dem.shape
         self._MOLA_MIN_LAT = self._MOLA_MAX_LAT - self.dem_shape[0]*self.deg_sampling
         self._MOLA_MAX_LONG = self._MOLA_MIN_LONG + self.dem_shape[1]*self.deg_sampling
 
-    def read(self):
+    def read(self) -> bool:
         if self.dem is not None:
             print("WARNING: dem has been already loaded or set by init. Not loading again.")
         elif self.filename_base != "":
@@ -73,11 +74,11 @@ class MOLA(DEMBase):
             print("ERROR: header filename not set.")
         return False
 
-    def reset(self):
+    def reset(self) -> None:
         del self.dem
         self.dem = None
 
-    def get_dem_radius_from_lat_lon(self, lat, lon):
+    def get_dem_radius_from_lat_lon(self, lat: float | npt.NDArray[np.float64], lon: float | npt.NDArray[np.float64]) -> npt.NDArray[np.int32] | None:
         if self.dem is not None:
             mola_x, mola_y = self.to_XY_from_LL(lat, lon)
             return self._XY_vectors_to_radius(mola_x, mola_y)
@@ -85,7 +86,7 @@ class MOLA(DEMBase):
             print("ERROR: MOLA DEM not yet loaded.")
             return None
 
-    def get_scaled_subdem_from_latlon_limits(self, lat_n, lat_s, lon_e, lon_w, scale_factor=4):
+    def get_scaled_subdem_from_latlon_limits(self, lat_n: float, lat_s: float, lon_e: float, lon_w: float, scale_factor: float = 4) -> MOLA | None:
         if self.dem is not None:
             lat_n_local = np.ceil(lat_n / self.deg_sampling) * self.deg_sampling
             lat_n_local = lat_n_local if lat_n_local <= self._MOLA_MAX_LAT else self._MOLA_MAX_LAT
@@ -129,7 +130,7 @@ class MOLA(DEMBase):
             print("ERROR: MOLA DEM not yet loaded.")
             return None
 
-    def to_XY_from_LL(self, lat, long, return_as_float=False):
+    def to_XY_from_LL(self, lat: float | npt.NDArray[np.float64], long: float | npt.NDArray[np.float64], return_as_float: bool = False) -> tuple[npt.NDArray[np.float64] | npt.NDArray[np.int64], npt.NDArray[np.float64] | npt.NDArray[np.int64]]:
         mola_x = (long - self._MOLA_MIN_LONG) / self.deg_sampling
         mola_y = (self._MOLA_MAX_LAT - lat) / self.deg_sampling
 
@@ -152,19 +153,19 @@ class MOLA(DEMBase):
 
         return (mola_x, mola_y)
 
-    def to_LL_from_XY(self, x, y):
+    def to_LL_from_XY(self, x: float, y: float) -> tuple[float, float]:
         lat = -y * self.deg_sampling + self._MOLA_MAX_LAT
         lon = x * self.deg_sampling + self._MOLA_MIN_LONG
         return (lat, lon)
 
-    def XY_ranges_to_radius(self, x_min, x_max, y_min, y_max, add_offset=True):
+    def XY_ranges_to_radius(self, x_min: int, x_max: int, y_min: int, y_max: int, add_offset: bool = True) -> npt.NDArray[np.int32]:
         # astype(int32): numpy>=2 (NEP 50) raises OverflowError when adding the
         # MOLA radius offset (3396000 m) to an int16 DEM array (old numpy
         # silently promoted the result type)
         output_dem = self.dem[y_min:y_max+1, x_min:x_max+1].copy().astype("int32") + int(add_offset)*self.offset_to_be_added
         return output_dem
 
-    def _XY_vectors_to_radius(self, x_vect, y_vect, add_offset=True):
+    def _XY_vectors_to_radius(self, x_vect: npt.NDArray[np.int64], y_vect: npt.NDArray[np.int64], add_offset: bool = True) -> npt.NDArray[np.int32]:
         # get vector containing MOLA radius corresponding to each frame to be processed (in the same order)
         output_dem = self.dem[y_vect, x_vect].copy().astype("int32") + int(add_offset)*self.offset_to_be_added
         output_dem[self._mask] = self.dummy_value
@@ -174,5 +175,5 @@ class MOLA(DEMBase):
 class MOLA128(MOLA):
     """MOLA MEGDR 1/128 degrees DEM"""
 
-    def __init__(self, dem_name="MOLA128", filename_base="", image=None, dummy_value=0, max_lat=88, min_long=0):
+    def __init__(self, dem_name: str = "MOLA128", filename_base: str = "", image: npt.NDArray[np.int16] | npt.NDArray[np.float64] | None = None, dummy_value: int = 0, max_lat: float = 88, min_long: float = 0) -> None:
         super().__init__(dem_name, filename_base, image, dummy_value, max_lat=max_lat, min_long=min_long, sampling_den=128)

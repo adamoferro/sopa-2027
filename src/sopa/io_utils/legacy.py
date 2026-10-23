@@ -1,6 +1,7 @@
 import numpy as np
+import numpy.typing as npt
 
-def read_sofa_sharad_orbit_input(filename_base, pri=1428e-6):
+def read_sofa_sharad_orbit_input(filename_base: str, pri: float = 1428e-6) -> dict[str, npt.NDArray[np.float64]]:
     FAST_TIME_SAMPLING_FREQUENCY = 80e6/3.
     dt = 1./FAST_TIME_SAMPLING_FREQUENCY
     DCG_DELAY = 11.98e-6      # digital chirp generator delay, used in the calculation of the rxwin opening time

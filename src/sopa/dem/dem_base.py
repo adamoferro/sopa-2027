@@ -21,10 +21,13 @@
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
 
+import numpy.typing as npt
+
+
 class DEMBase():
     """docstring for DEMBase."""
 
-    def __init__(self, dem_name="no name", filename_base="", dummy_value=0):
+    def __init__(self, dem_name: str = "no name", filename_base: str = "", dummy_value: int = 0) -> None:
         self.dem_name = dem_name
         self.filename_base = filename_base
         self.dummy_value = dummy_value
@@ -32,14 +35,14 @@ class DEMBase():
         self.deg_sampling = 0
         self.offset_to_be_added = 0
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.dem_name + ", base filename: " + self.filename_base
 
-    def read(self):
+    def read(self) -> bool:
         raise NotImplementedError
 
-    def get_dem_radius_from_lat_lon(self, lat, lon):
+    def get_dem_radius_from_lat_lon(self, lat: npt.ArrayLike, lon: npt.ArrayLike) -> npt.NDArray | None:
         raise NotImplementedError
 
-    def reset(self):
+    def reset(self) -> None:
         raise NotImplementedError

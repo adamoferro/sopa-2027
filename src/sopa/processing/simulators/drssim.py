@@ -23,13 +23,15 @@
 
 from sopa.processing.simulators.sim_base import _SIMBase
 import numpy as np
+import numpy.typing as npt
 from scipy.ndimage import gaussian_filter
+from typing import Any
 
 
 class dRSsim(_SIMBase):
     """docstring for dRSsim."""
 
-    def __init__(self, geom_obj, dem_obj, param_obj, n_processes=1, use_data_dt=True, simulate_chirp=True, instr_obj=None, roi_img=None):
+    def __init__(self, geom_obj: Any, dem_obj: Any, param_obj: Any, n_processes: int = 1, use_data_dt: bool = True, simulate_chirp: bool = True, instr_obj: Any = None, roi_img: npt.NDArray | None = None) -> None:
         super().__init__(geom_obj, dem_obj, param_obj, n_processes, use_data_dt, simulate_chirp, instr_obj, roi_img)
         self.n_frames_offset_for_dir_estimation = 1
         self.alt_sim_spacing = 50
@@ -44,11 +46,11 @@ class dRSsim(_SIMBase):
         self.alt_sim_matrix = np.array([alt_sim_range]).T * np.ones([1, len(act_sim_range)])
         self.act_sim_matrix = np.array([act_sim_range]) * np.ones([len(alt_sim_range), 1])
 
-    def simulate(self, orbit_data):
+    def simulate(self, orbit_data: dict[str, npt.NDArray[np.float64] | float]) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.uint8], npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64], tuple[Any, ...]] | None:
         return super().simulate(orbit_data, dRSsim._simulate_frame_range)
 
     @staticmethod       # defined static to allow calling from ray avoiding the "pickling" of the object
-    def _simulate_frame_range(id, n_processes, orbit_xyz, frame_range, sim_n_samples, local_direction_g, UTMNorthing_g, UTMEasting_g, UTMZone_g, rxwin_ref, input_scr_data_shifts_alignment_t, dt, dem_obj, geom_obj, alt_sim_matrix, act_sim_matrix, gaussian_filter_sigma, further_pars=[], roi_img=None):
+    def _simulate_frame_range(id: int, n_processes: int, orbit_xyz: tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]], frame_range: npt.NDArray[np.int64], sim_n_samples: int, local_direction_g: npt.NDArray[np.float64], UTMNorthing_g: npt.NDArray[np.float64], UTMEasting_g: npt.NDArray[np.float64], UTMZone_g: list[str], rxwin_ref: float, input_scr_data_shifts_alignment_t: npt.NDArray[np.float64], dt: float, dem_obj: Any, geom_obj: Any, alt_sim_matrix: npt.NDArray[np.float64], act_sim_matrix: npt.NDArray[np.float64], gaussian_filter_sigma: int, further_pars: list[float] = [], roi_img: npt.NDArray | None = None) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.uint8], npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64], tuple[dict[int, npt.NDArray[np.float64]], dict[int, npt.NDArray[np.float64]]]]:
         _C = 299792458.
 
         n_frames_to_be_simulated = len(frame_range)

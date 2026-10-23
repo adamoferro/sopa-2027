@@ -24,10 +24,11 @@
 import matplotlib
 from matplotlib import pyplot as pp
 import numpy as np
+import numpy.typing as npt
 
 
 class _BaseRadargramPlot(object):
-    def __init__(self, image, db_output=False, min_value=-1, max_value=-1, method=None, top_point=0, bottom_point=-1, title=""):
+    def __init__(self, image: npt.NDArray[np.float64], db_output: bool = False, min_value: float = -1, max_value: float = -1, method: str | None = None, top_point: int = 0, bottom_point: int = -1, title: str = "") -> None:
         self._db_output = db_output
         if self._db_output:
             self._image = 10.*np.log10(image)
@@ -58,7 +59,7 @@ class _BaseRadargramPlot(object):
             self._bottom_point = bottom_point
         self._title = title
 
-    def _hist_limits(self, ll=0.5, ul=0.995):
+    def _hist_limits(self, ll: float = 0.5, ul: float = 0.995) -> tuple[float, float]:
         lower_perc_limit = ll
         upper_perc_limit = ul
         h, be = np.histogram(self._image, bins=1000, density=True)
@@ -68,7 +69,7 @@ class _BaseRadargramPlot(object):
         h_ok_ids = np.where((hs >= lower_perc_limit) & (hs <= upper_perc_limit))[0]
         return be[h_ok_ids[0]], be[h_ok_ids[-1]]
 
-    def plot(self, cmap="gray"):
+    def plot(self, cmap: str | matplotlib.colors.Colormap = "gray") -> None:
         pp.figure(figsize=(12, 6))
         pp.imshow(self._image[self._top_point:self._bottom_point, :], cmap=cmap, vmin=self._min_value, vmax=self._max_value, interpolation="none")
         pp.title(self._title, fontweight="bold")
@@ -81,24 +82,24 @@ class _BaseRadargramPlot(object):
 class RadargramPlot(_BaseRadargramPlot):
     """docstring"""
 
-    def __init__(self, image, db_output=True, min_value=-1, max_value=-1, method="hist", top_point=0, bottom_point=-1, title=""):
+    def __init__(self, image: npt.NDArray[np.float64], db_output: bool = True, min_value: float = -1, max_value: float = -1, method: str = "hist", top_point: int = 0, bottom_point: int = -1, title: str = "") -> None:
         super().__init__(image, db_output, min_value, max_value, method, top_point, bottom_point, title)
 
 
 class SimulationPlot(_BaseRadargramPlot):
     """docstring"""
 
-    def __init__(self, image, min_value=-1, max_value=-1, method="hist", top_point=0, bottom_point=-1, title=""):
+    def __init__(self, image: npt.NDArray[np.float64], min_value: float = -1, max_value: float = -1, method: str = "hist", top_point: int = 0, bottom_point: int = -1, title: str = "") -> None:
         super().__init__(image, False, min_value, max_value, method, top_point, bottom_point, title)
 
 
 class GroundDistancePlot(_BaseRadargramPlot):
     """docstring"""
 
-    def __init__(self, image, min_value=0, max_value=20, top_point=0, bottom_point=-1, title=""):
+    def __init__(self, image: npt.NDArray[np.float64], min_value: float = 0, max_value: float = 20, top_point: int = 0, bottom_point: int = -1, title: str = "") -> None:
         super().__init__(image, False, min_value, max_value, None, top_point, bottom_point, title)
 
-    def plot(self):
+    def plot(self) -> None:
         nan_cmap = matplotlib.colormaps["gist_rainbow"].copy()      # 2026 port: matplotlib.cm.get_cmap was removed
         nan_cmap.set_bad(color='black')
         super().plot(cmap=nan_cmap)

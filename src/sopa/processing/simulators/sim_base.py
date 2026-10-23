@@ -22,14 +22,16 @@
 #   must be acknowledged.
 
 import numpy as np
+import numpy.typing as npt
 from sopa.processing.utils import ProcessingUtils
+from typing import Any
 
 
 class _SIMBase(object):
     """docstring for SIMBase."""
     _C = 299792458.
 
-    def __init__(self, geom_obj, dem_obj, param_obj, n_processes=1, use_data_dt=True, simulate_chirp=False, instr_obj=None, roi_img=None):
+    def __init__(self, geom_obj: Any, dem_obj: Any, param_obj: Any, n_processes: int = 1, use_data_dt: bool = True, simulate_chirp: bool = False, instr_obj: Any = None, roi_img: npt.NDArray | None = None) -> None:
         self.DEFAULT_DT = 37.5e-9
         self.USE_DATA_DT = use_data_dt
 
@@ -70,7 +72,7 @@ class _SIMBase(object):
 
         self.n_processes = n_processes
 
-    def _pre_simulate(self, orbit_data):
+    def _pre_simulate(self, orbit_data: dict[str, npt.NDArray[np.float64] | float]) -> tuple[int, npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64], float, float] | None:
         n_input_frames = orbit_data["X"].shape[0]
 
         if self._frames_to_be_simulated_end >= n_input_frames:
@@ -148,14 +150,14 @@ class _SIMBase(object):
 
         return (n_frames_to_be_simulated, input_rxwin_data_t, input_scx_data, input_scy_data, input_scz_data, input_lat_data, input_long_data, input_scr_data, rxwin_ref, input_scr_data_shifts_alignment_t)
 
-    def _define_frame_ranges(self, n_frames_to_be_simulated):
+    def _define_frame_ranges(self, n_frames_to_be_simulated: int) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.int64]]:
         n_frames_per_subprocess = int(np.ceil(n_frames_to_be_simulated / self.n_processes))
         sub_frame_range_starts = np.arange(0, n_frames_to_be_simulated, n_frames_per_subprocess)
         sub_frame_range_stops = sub_frame_range_starts + n_frames_per_subprocess
         sub_frame_range_stops[-1] = np.min([sub_frame_range_stops[-1], n_frames_to_be_simulated])
         return sub_frame_range_starts, sub_frame_range_stops
 
-    def _simulate_chirp(self):
+    def _simulate_chirp(self) -> None:
         SIZE_RANGE_FFT = 4096
         range_weighting_window_ones = np.ones(int(SIZE_RANGE_FFT/2.))
         range_weighting_window_original = np.hanning(SIZE_RANGE_FFT/2.)
@@ -166,7 +168,7 @@ class _SIMBase(object):
         sim_image_fft *= chirp_fft_combined * np.ones([1, self.sim_image.shape[1]])
         self.sim_image = np.abs(np.fft.ifft(sim_image_fft, axis=0)[:self.sim_image.shape[0], :])
 
-    def simulate(self, orbit_data, sim_callback, further_pars=[]):
+    def simulate(self, orbit_data: dict[str, npt.NDArray[np.float64] | float], sim_callback: Any, further_pars: list[float] = []) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.uint8], npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64], tuple[Any, ...]] | None:
 
         pre_simulate_output = self._pre_simulate(orbit_data)
         if pre_simulate_output is not None:

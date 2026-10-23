@@ -26,12 +26,14 @@ from sopa.input.sharad.data.rdr import pds_us_log as log_messages
 from sopa.geometry.coordinate_converter import CoordinateConverter
 import os
 import numpy as np
+import numpy.typing as npt
+from typing import Any
 
 # TODO use more the logger
 
 
 class RDR(RSData):
-    def __init__(self, dataset_name="no name", pri=0, presumming=0, filename_base="", use_gzip_and_iso8859_1=False, logger=None):
+    def __init__(self, dataset_name: str = "no name", pri: float = 0, presumming: int = 0, filename_base: str = "", use_gzip_and_iso8859_1: bool = False, logger: Any = None) -> None:
         super().__init__(dataset_name, pri, presumming, filename_base, use_gzip_and_iso8859_1, logger)
 
         # input file suffixes
@@ -50,7 +52,7 @@ class RDR(RSData):
 
         self._data_type = "focused"
 
-    def _load_from_file(self, mode="full", force_reload=False):      # filename_base is set, checked by super
+    def _load_from_file(self, mode: str = "full", force_reload: bool = False) -> bool:      # filename_base is set, checked by super
         if self._check_file_presence(mode):
             load_ok1 = True
             load_ok2 = True
@@ -61,7 +63,7 @@ class RDR(RSData):
             return load_ok1 and load_ok2
         return False
 
-    def _check_file_presence(self, mode="full"):
+    def _check_file_presence(self, mode: str = "full") -> bool:
         files_ok1 = True
         files_ok2 = True
         if mode == "full" or mode == "ancillary":
@@ -72,7 +74,7 @@ class RDR(RSData):
             files_ok2 = os.path.isfile(self._DATA_FILENAME)
         return (files_ok1 and files_ok2)
 
-    def _load_ancillary_data(self):
+    def _load_ancillary_data(self) -> bool:
         # orbit data parsing
         geom_data = self._read_rdr_data_geom_file()
         if geom_data is None:
@@ -83,8 +85,8 @@ class RDR(RSData):
         self._ancillary_already_read = True
         return True
 
-    def _read_rdr_data_geom_file(self):
-        def parsetime(v):
+    def _read_rdr_data_geom_file(self) -> npt.NDArray | None:
+        def parsetime(v: str) -> np.datetime64:
             return np.datetime64(v)
 
         try:
@@ -107,7 +109,7 @@ class RDR(RSData):
             self.logger.log_messages(log_messages.ERR_MESSAGES["orbit_file_decode"])
         return None
 
-    def _load_rdr_data(self, start_frame=0, end_frame=-1):
+    def _load_rdr_data(self, start_frame: int = 0, end_frame: int = -1) -> bool | None:
         '''
         Read PDS US RDR data (filenames in the form s_xxxxxxxx_rgram.img)
         - start_frame and end_frame can be in the range [0, OBS_NUMBER_OF_FRAMES-1]
@@ -135,7 +137,7 @@ class RDR(RSData):
 
         return False
 
-    def generate_orbit_data(self, skip=1):
+    def generate_orbit_data(self, skip: int = 1) -> None:
         '''
         Saves in self._orbit_data the following fields as a dictionary:
         "time_offset_s", "rxwin_time_s", "Lat", "Lon", "Radius", "Vtang", "Vradial", "X", "Y", "Z", "SZA"

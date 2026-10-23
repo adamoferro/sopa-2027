@@ -30,6 +30,7 @@
 
 import os
 import numpy as np
+import numpy.typing as npt
 
 # numpy dtype name -> ENVI header "data type" code
 # (https://www.l3harrisgeospatial.com/docs/ENVIHeaderFiles.html)
@@ -63,7 +64,7 @@ _ENVI_DATATYPE2NUMPY = {
 }
 
 
-def read(filename):
+def read(filename: str) -> npt.NDArray | None:
     hdr_filename = filename + ".hdr"
     if not os.path.isfile(hdr_filename):
         print("ERROR: cannot find ENVI header file " + hdr_filename)
@@ -94,7 +95,7 @@ def read(filename):
         return None
 
 
-def write(filename, np_array, complex_output=False):
+def write(filename: str, np_array: npt.NDArray, complex_output: bool = False) -> bool:
     if (np_array.dtype.name == "complex64" or np_array.dtype.name == "complex128") and not complex_output:
         np_array_tmp = np.abs(np_array).astype("float64")**2.
     else:
@@ -107,7 +108,7 @@ def write(filename, np_array, complex_output=False):
     return True
 
 
-def _read_envi_header(hdr_filename):
+def _read_envi_header(hdr_filename: str) -> dict[str, str]:
     header = dict()
     with open(hdr_filename, "rt") as fp:
         line = fp.readline()
@@ -129,7 +130,7 @@ def _read_envi_header(hdr_filename):
     return header
 
 
-def _write_numpy(filename, np_array):
+def _write_numpy(filename: str, np_array: npt.NDArray) -> bool:
     envi_dtype = _NUMPY2ENVI_DATATYPE[np_array.dtype.name]
     hdr_filename = filename + ".hdr"
     with open(filename, "wb") as fp:

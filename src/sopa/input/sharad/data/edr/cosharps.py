@@ -31,13 +31,15 @@ from sopa.input.sharad.data.edr import cosharps_log as log_messages
 import os
 import glob
 import numpy as np
+import numpy.typing as npt
 import datetime
 from scipy import ndimage as nd
 from scipy.interpolate import interp1d
+from typing import Any
 
 
 class EDR(RSData):
-    def __init__(self, dataset_name="no name", pri=0, presumming=0, filename_base="", use_gzip_and_iso8859_1=False, logger=None, read_hk_data=False, keep_data_with_problems=False):
+    def __init__(self, dataset_name: str = "no name", pri: float = 0, presumming: int = 0, filename_base: str = "", use_gzip_and_iso8859_1: bool = False, logger: Any = None, read_hk_data: bool = False, keep_data_with_problems: bool = False) -> None:
         super().__init__(dataset_name, pri, presumming, filename_base, use_gzip_and_iso8859_1, logger)
 
         # input file suffixes
@@ -85,7 +87,7 @@ class EDR(RSData):
 
         self._data_type = "raw"
 
-    def _load_from_file(self, mode="full", force_reload=False):      # filename_base is set, checked by super
+    def _load_from_file(self, mode: str = "full", force_reload: bool = False) -> bool:      # filename_base is set, checked by super
         if self._check_file_presence(mode):
             load_ok1 = True
             load_ok2 = True
@@ -96,7 +98,7 @@ class EDR(RSData):
             return load_ok1 and load_ok2
         return False
 
-    def _check_file_presence(self, mode="full"):
+    def _check_file_presence(self, mode: str = "full") -> bool:
         files_ok1 = True
         files_ok2 = True
         if mode == "full" or mode == "ancillary":
@@ -105,7 +107,7 @@ class EDR(RSData):
             files_ok2 = self._check_file_presence_data()
         return (files_ok1 and files_ok2)
 
-    def _check_file_presence_ancillary(self):
+    def _check_file_presence_ancillary(self) -> bool:
         self._HEADER_FILENAME = self.filename_base + self._HEADER_SUFFIX
         self._AUX_FILENAME = self.filename_base + self._AUX_SUFFIX
         self._HK_FILENAME = self.filename_base + self._HK_SUFFIX
@@ -122,7 +124,7 @@ class EDR(RSData):
             self.logger.log_messages(log_messages.ERR_MESSAGES["other_file_not-found"])
         return files_ok
 
-    def _check_file_presence_data(self):
+    def _check_file_presence_data(self) -> bool:
         self._DATA_FILENAME = self.filename_base + self._DATA_SUFFIX
         files_ok = False
         if os.path.isfile(self._DATA_FILENAME):
@@ -131,7 +133,7 @@ class EDR(RSData):
             self.logger.log_messages(log_messages.ERR_MESSAGES["other_file_not-found"])
         return files_ok
 
-    def _load_ancillary_data(self):
+    def _load_ancillary_data(self) -> bool:
         # header parsing
         header_data_grouped = self._read_raw_data_header()
 
@@ -183,7 +185,7 @@ class EDR(RSData):
         self._ancillary_already_read = True
         return True
 
-    def _read_raw_data_header(self):
+    def _read_raw_data_header(self) -> tuple[dict[str, Any], str] | None:
         try:
             with self.open_function(self._HEADER_FILENAME, mode="rt", encoding=self.encoding) as fp:
                 header_data = dict()
@@ -219,7 +221,7 @@ class EDR(RSData):
             self.logger.log_messages(log_messages.ERR_MESSAGES["header_file_decode"])
         return None
 
-    def _read_raw_data_aux_file(self):
+    def _read_raw_data_aux_file(self) -> npt.NDArray | None:
         try:
             aux_data = np.loadtxt(
                 self._AUX_FILENAME,
@@ -235,8 +237,8 @@ class EDR(RSData):
             self.logger.log_messages(log_messages.ERR_MESSAGES["aux_file_read"])
         return None
 
-    def _read_raw_data_geom_file(self):
-        def parsetime(v):
+    def _read_raw_data_geom_file(self) -> npt.NDArray | None:
+        def parsetime(v: str) -> np.datetime64:
             return np.datetime64(v)
 
         try:
@@ -258,7 +260,7 @@ class EDR(RSData):
             self.logger.log_messages(log_messages.ERR_MESSAGES["orbit_file_decode"])
         return None
 
-    def _read_raw_data_hk_file(self):
+    def _read_raw_data_hk_file(self) -> dict[str, npt.NDArray[np.float64]] | None:
         date_time_ref_obj = datetime.datetime.fromtimestamp(315532800, tz=datetime.timezone.utc)
         try:
             with open(self._HK_FILENAME, 'rt') as fp:
@@ -283,7 +285,7 @@ class EDR(RSData):
             self.logger.log_messages(log_messages.ERR_MESSAGES["hk-data_read"])
         return None
 
-    def _load_raw_data(self, start_frame=0, end_frame=-1):
+    def _load_raw_data(self, start_frame: int = 0, end_frame: int = -1) -> bool | None:
         '''
         Read CO-SHARPS raw data (filenames in the form OBS_xxxxxxxxx_y_Mode_00z.dat)
         - start_frame and end_frame can be in the range [0, OBS_NUMBER_OF_FRAMES-1]
@@ -314,14 +316,14 @@ class EDR(RSData):
         return False
 
     @staticmethod
-    def _fill_data_holes(data, hole_max_value=0):
+    def _fill_data_holes(data: npt.NDArray[np.float64], hole_max_value: float = 0) -> npt.NDArray[np.float64]:
         '''
         Fill holes in data using a nearest neighbour approach.
         '''
         ids = nd.distance_transform_edt(data <= hole_max_value, return_distances=False, return_indices=True)
         return data[tuple(ids)]
 
-    def generate_orbit_data(self, skip=1):
+    def generate_orbit_data(self, skip: int = 1) -> None:
         '''
         Saves in self._orbit_data the following fields as a dictionary,
         interpolated to match 1:skip the frames of the raw data:

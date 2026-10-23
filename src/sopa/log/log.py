@@ -22,27 +22,27 @@
 #   must be acknowledged.
 
 class _logger_base():
-    def __init__(self, verbose=False):
+    def __init__(self, verbose: bool = False) -> None:
         raise NotImplementedError
 
-    def log_messages(self, new_message):
+    def log_messages(self, new_message: str) -> None:
         pass
 
-    def log_write(self, filename):
+    def log_write(self, filename: str) -> None:
         pass
 
 
 class logger(_logger_base):
-    def __init__(self, verbose=False):
+    def __init__(self, verbose: bool = False) -> None:
         self.LOG_MESSAGES = list()
         self.verbose = verbose
 
-    def log_messages(self, new_message):
+    def log_messages(self, new_message: str) -> None:
         self.LOG_MESSAGES.append(new_message)
         if self.verbose:
             print(new_message)
 
-    def log_write(self, filename):
+    def log_write(self, filename: str) -> None:
         try:
             with open(filename, 'a') as fp:
                 for lm in self.LOG_MESSAGES:
@@ -53,5 +53,5 @@ class logger(_logger_base):
 
 
 class fake_logger(_logger_base):
-    def __init__(self, verbose=False):
+    def __init__(self, verbose: bool = False) -> None:
         pass
