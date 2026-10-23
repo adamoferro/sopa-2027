@@ -229,7 +229,7 @@ class CoordinateConverter():
         #compute the UTM Zone from the latitude and longitude
         UTMLetters = self.UTMLetterDesignator(Lat)
 
-        UTMZone = [str(ZoneNumber[i_z])+UTMLetters[i_z] for i_z in np.arange(len(ZoneNumber))]
+        UTMZone = [f'{ZoneNumber[i_z]}{UTMLetters[i_z]}' for i_z in np.arange(len(ZoneNumber))]
 
         eccPrimeSquared = (eccSquared)/(1-eccSquared)
 

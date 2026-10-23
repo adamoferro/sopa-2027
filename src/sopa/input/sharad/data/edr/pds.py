@@ -146,7 +146,7 @@ class EDR(RSData):
                 header_data, header_error_field = header_data_grouped
 
                 if header_error_field != "":
-                    err_msg = log_messages.ERR_MESSAGES["discarded"] + " " + header_error_field + " = " + str(header_data[header_error_field])
+                    err_msg = f'{log_messages.ERR_MESSAGES["discarded"]} {header_error_field} = {header_data[header_error_field]}'
                     self.logger.log_messages(err_msg)
                     return False
                 else:
@@ -294,7 +294,7 @@ class EDR(RSData):
                     echo_samples_raw = raw_data_np["ECHO_SAMPLES"].T
                     raw_data = np.zeros([self._N_SAMPLES, self.n_frames])
 
-                    unpack_str = str(self._N_SAMPLES) + "*int:" + str(self._n_bits_per_byte)
+                    unpack_str = f"{self._N_SAMPLES}*int:{self._n_bits_per_byte}"
                     for i_f in frame_range:            # using "for" to avoid memory problems. If no memory limits, a single BitArray could handle the whole raw dataset
                         tmpbs = bs.BitArray(bytes(echo_samples_raw[:, i_f]))
                         raw_data[:, i_f] = tmpbs.unpack(unpack_str)

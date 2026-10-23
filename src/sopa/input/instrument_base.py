@@ -33,4 +33,4 @@ class RSInstrument():
         self.ref_v_platform = ref_v_platform                                # m/s
 
     def __str__(self) -> str:
-        return self.name + ", fc="+"{:.1f}".format(self.frequency/1e6) + " MHz, fb=" + "{:.1f}".format(self.bandwidth/1e6) + " MHz"
+        return f"{self.name}, fc={self.frequency/1e6:.1f} MHz, fb={self.bandwidth/1e6:.1f} MHz"

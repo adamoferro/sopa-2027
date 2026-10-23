@@ -36,7 +36,7 @@ class DEMBase():
         self.offset_to_be_added = 0
 
     def __str__(self) -> str:
-        return self.dem_name + ", base filename: " + self.filename_base
+        return f"{self.dem_name}, base filename: {self.filename_base}"
 
     def read(self) -> bool:
         raise NotImplementedError

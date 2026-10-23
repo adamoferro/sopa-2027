@@ -141,7 +141,7 @@ class EDR(RSData):
             header_data, header_error_field = header_data_grouped
 
             if header_error_field != "":
-                err_msg = log_messages.ERR_MESSAGES["discarded"] + " " + header_error_field + " = " + str(header_data[header_error_field])
+                err_msg = f'{log_messages.ERR_MESSAGES["discarded"]} {header_error_field} = {header_data[header_error_field]}'
                 self.logger.log_messages(err_msg)
                 return False
             else:

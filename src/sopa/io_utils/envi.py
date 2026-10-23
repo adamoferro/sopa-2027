@@ -67,7 +67,7 @@ _ENVI_DATATYPE2NUMPY = {
 def read(filename: str) -> npt.NDArray | None:
     hdr_filename = filename + ".hdr"
     if not os.path.isfile(hdr_filename):
-        print("ERROR: cannot find ENVI header file " + hdr_filename)
+        print(f"ERROR: cannot find ENVI header file {hdr_filename}")
         return None
     try:
         header = _read_envi_header(hdr_filename)
@@ -77,7 +77,7 @@ def read(filename: str) -> npt.NDArray | None:
         header_offset = int(header.get("header offset", 0))
         byte_order = int(header.get("byte order", 0))       # 0: little-endian, 1: big-endian
         endian = ">" if byte_order == 1 else "<"
-        dtype = np.dtype(endian + _ENVI_DATATYPE2NUMPY[int(header["data type"])])
+        dtype = np.dtype(f"{endian}{_ENVI_DATATYPE2NUMPY[int(header['data type'])]}")
 
         # note: only the first band is read
         if bands > 1 and header.get("interleave", "bsq").lower() != "bsq":
@@ -91,7 +91,7 @@ def read(filename: str) -> npt.NDArray | None:
             np_array = np_array[:lines, :]                  # keep only band 1
         return np_array
     except (IOError, OSError, KeyError, ValueError):
-        print("ERROR: cannot read ENVI file " + filename)
+        print(f"ERROR: cannot read ENVI file {filename}")
         return None
 
 
@@ -137,12 +137,12 @@ def _write_numpy(filename: str, np_array: npt.NDArray) -> bool:
         np_array.astype(np_array.dtype.newbyteorder("<")).tofile(fp)        # little-endian (native on x86)
     with open(hdr_filename, "wt") as fp:
         fp.write("ENVI\n")
-        fp.write("samples = " + str(np_array.shape[1]) + "\n")
-        fp.write("lines   = " + str(np_array.shape[0]) + "\n")
+        fp.write(f"samples = {np_array.shape[1]}\n")
+        fp.write(f"lines   = {np_array.shape[0]}\n")
         fp.write("bands   = 1\n")
         fp.write("header offset = 0\n")
         fp.write("file type = ENVI Standard\n")
-        fp.write("data type = " + str(envi_dtype) + "\n")
+        fp.write(f"data type = {envi_dtype}\n")
         fp.write("interleave = bsq\n")
         fp.write("byte order = 0\n")
     return True

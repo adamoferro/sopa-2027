@@ -79,7 +79,7 @@ class sfRSsimAltAngle(_SIMBase):
         roi_alt_ias = dict()
         pd_hist_argmax_total = pd.DataFrame()
 
-        status_str_pre = '\t'+"|\t\t"*id
+        status_str_pre = f'\t{"|\t\t"*id}'
         status_str_post = "\t\t|"*(n_processes-id-1)
         last_status = -1
         for count, i_frame_tbs in enumerate(frame_range):
@@ -88,7 +88,7 @@ class sfRSsimAltAngle(_SIMBase):
             else:
                 new_status = int(count / n_frames_to_be_simulated * 20) * 5
             if new_status != last_status:
-                print(status_str_pre + '{:>2}'.format(new_status) + status_str_post)
+                print(f'{status_str_pre}{new_status:>2}{status_str_post}')
                 last_status = new_status
 
             local_direction = local_direction_g[i_frame_tbs]

@@ -86,9 +86,9 @@ class RSData():
         print("ERROR: cannot set orbit data manually.")
 
     def __str__(self) -> str:
-        output_str = self.dataset_name + ", n_frames=" + str(self.n_frames) + ", PRI=" + "{:.1f}".format(self.pri*1e6) + " us, presum=" + str(self.presumming)
+        output_str = f"{self.dataset_name}, n_frames={self.n_frames}, PRI={self.pri*1e6:.1f} us, presum={self.presumming}"
         if self.filename_base != "":
-            output_str += ", base filename: " + self.filename_base
+            output_str += f", base filename: {self.filename_base}"
         return output_str
 
     def load(self, mode: str = "full", force_reload: bool = False) -> bool | None:            # mode can be: "all", "ancillary", "data". Not all implementation may be able to provide different behaviors

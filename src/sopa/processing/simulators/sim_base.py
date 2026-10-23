@@ -83,7 +83,7 @@ class _SIMBase(object):
             if "dt" in orbit_data:
                 self.dt = orbit_data["dt"]
             else:
-                print("WARNING: orbit data do not contain the dt value. Using the default dt = " + str(self.DEFAULT_DT) + " s.")
+                print(f"WARNING: orbit data do not contain the dt value. Using the default dt = {self.DEFAULT_DT} s.")
 
         # calculate actual start and end frames according to aperture
         if self._frames_to_be_simulated_start == -1:

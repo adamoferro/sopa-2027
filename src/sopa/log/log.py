@@ -46,7 +46,7 @@ class logger(_logger_base):
         try:
             with open(filename, 'a') as fp:
                 for lm in self.LOG_MESSAGES:
-                    fp.write(lm + '\n')
+                    fp.write(f'{lm}\n')
                 self.LOG_MESSAGES = list()           # empty for next write
         except IOError:
             print("ERROR: cannot write log file or append new messages to existing log file.")

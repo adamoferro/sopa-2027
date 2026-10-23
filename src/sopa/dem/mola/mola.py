@@ -53,7 +53,7 @@ class MOLA(DEMBase):
             self._set_info()
 
     def __str__(self) -> str:
-        return self.dem_name + ", base filename: " + self.filename_base + ", extension: lat " + str(self._MOLA_MIN_LAT) + ", " + str(self._MOLA_MAX_LAT) + "; long " + str(self._MOLA_MIN_LONG) + ", " + str(self._MOLA_MAX_LONG)
+        return f"{self.dem_name}, base filename: {self.filename_base}, extension: lat {self._MOLA_MIN_LAT}, {self._MOLA_MAX_LAT}; long {self._MOLA_MIN_LONG}, {self._MOLA_MAX_LONG}"
 
     def _set_info(self) -> None:
         self.dem_shape = self.dem.shape
