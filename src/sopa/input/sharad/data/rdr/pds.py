@@ -27,7 +27,7 @@
 from sopa.input.data_base import RSData
 from sopa.input.sharad.data.rdr import pds_log as log_messages
 from sopa.geometry.coordinate_converter import CoordinateConverter
-import os
+from pathlib import Path
 import numpy as np
 import numpy.typing as npt
 from typing import Any
@@ -79,7 +79,7 @@ class RDR(RSData):
 
     def _check_file_presence(self) -> bool:
         self._HEADER_FILENAME = self.filename_base + self._HEADER_SUFFIX
-        if os.path.isfile(self._HEADER_FILENAME):
+        if Path(self._HEADER_FILENAME).is_file():
             return self._check_file_presence_data()
         else:
             self.logger.log_messages(log_messages.ERR_MESSAGES["other_file_not-found"])
@@ -87,7 +87,7 @@ class RDR(RSData):
 
     def _check_file_presence_data(self) -> bool:
         self._DATA_FILENAME = self.filename_base + self._DATA_SUFFIX
-        if os.path.isfile(self._DATA_FILENAME):
+        if Path(self._DATA_FILENAME).is_file():
             return True
         else:
             self.logger.log_messages(log_messages.ERR_MESSAGES["other_file_not-found"])

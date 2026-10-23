@@ -30,7 +30,7 @@
 from sopa.input.data_base import RSData
 from sopa.input.sharad.data.edr import pds_log as log_messages
 from sopa.geometry.coordinate_converter import CoordinateConverter
-import os
+from pathlib import Path
 import numpy as np
 import numpy.typing as npt
 import bitstring as bs
@@ -101,7 +101,7 @@ class EDR(RSData):
 
     def _check_file_presence(self, mode: str = "full") -> bool:
         self._HEADER_FILENAME = self.filename_base + self._HEADER_SUFFIX      # needed for both ancillary and science data
-        if os.path.isfile(self._HEADER_FILENAME):
+        if Path(self._HEADER_FILENAME).is_file():
             files_ok1 = True
             files_ok2 = True
             if mode == "full" or mode == "ancillary":
@@ -115,7 +115,7 @@ class EDR(RSData):
 
     def _check_file_presence_ancillary(self) -> bool:
         self._AUX_FILENAME = self.filename_base + self._AUX_SUFFIX
-        if os.path.isfile(self._AUX_FILENAME):
+        if Path(self._AUX_FILENAME).is_file():
             return True
         else:
             self.logger.log_messages(log_messages.ERR_MESSAGES["other_file_not-found"])
@@ -123,7 +123,7 @@ class EDR(RSData):
 
     def _check_file_presence_data(self) -> bool:
         self._DATA_FILENAME = self.filename_base + self._DATA_SUFFIX
-        if os.path.isfile(self._DATA_FILENAME):
+        if Path(self._DATA_FILENAME).is_file():
             return True
         else:
             self.logger.log_messages(log_messages.ERR_MESSAGES["other_file_not-found"])

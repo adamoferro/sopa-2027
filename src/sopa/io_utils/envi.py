@@ -28,7 +28,7 @@
 # ENVI files (data + companion .hdr, BSQ interleave, little-endian),
 # readable by ENVI, GDAL and QGIS.
 
-import os
+from pathlib import Path
 import numpy as np
 import numpy.typing as npt
 
@@ -66,7 +66,7 @@ _ENVI_DATATYPE2NUMPY = {
 
 def read(filename: str) -> npt.NDArray | None:
     hdr_filename = filename + ".hdr"
-    if not os.path.isfile(hdr_filename):
+    if not Path(hdr_filename).is_file():
         print(f"ERROR: cannot find ENVI header file {hdr_filename}")
         return None
     try:

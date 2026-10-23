@@ -24,7 +24,7 @@
 from sopa.input.data_base import RSData
 from sopa.input.sharad.data.rdr import pds_us_log as log_messages
 from sopa.geometry.coordinate_converter import CoordinateConverter
-import os
+from pathlib import Path
 import numpy as np
 import numpy.typing as npt
 from typing import Any
@@ -68,10 +68,10 @@ class RDR(RSData):
         files_ok2 = True
         if mode == "full" or mode == "ancillary":
             self._ORBIT_FILENAME = self.filename_base + self._ORBIT_SUFFIX
-            files_ok1 = os.path.isfile(self._ORBIT_FILENAME)
+            files_ok1 = Path(self._ORBIT_FILENAME).is_file()
         if (mode == "full" and files_ok1) or mode == "data":
             self._DATA_FILENAME = self.filename_base + self._DATA_SUFFIX
-            files_ok2 = os.path.isfile(self._DATA_FILENAME)
+            files_ok2 = Path(self._DATA_FILENAME).is_file()
         return (files_ok1 and files_ok2)
 
     def _load_ancillary_data(self) -> bool:

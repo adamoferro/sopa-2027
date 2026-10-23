@@ -28,7 +28,7 @@
 
 from sopa.input.data_base import RSData
 from sopa.input.sharad.data.edr import cosharps_log as log_messages
-import os
+from pathlib import Path
 import glob
 import numpy as np
 import numpy.typing as npt
@@ -112,7 +112,7 @@ class EDR(RSData):
         self._AUX_FILENAME = self.filename_base + self._AUX_SUFFIX
         self._HK_FILENAME = self.filename_base + self._HK_SUFFIX
         files_ok = False
-        if os.path.isfile(self._HEADER_FILENAME) and os.path.isfile(self._AUX_FILENAME) and os.path.isfile(self._HK_FILENAME):
+        if Path(self._HEADER_FILENAME).is_file() and Path(self._AUX_FILENAME).is_file() and Path(self._HK_FILENAME).is_file():
             available_orbit_files = glob.glob(self.filename_base + self._ORBIT_SUFFIX_PRE + "[0-9]" + self._ORBIT_SUFFIX_POST)
             n_available_orbit_files = len(available_orbit_files)
             if n_available_orbit_files > 0:
@@ -127,7 +127,7 @@ class EDR(RSData):
     def _check_file_presence_data(self) -> bool:
         self._DATA_FILENAME = self.filename_base + self._DATA_SUFFIX
         files_ok = False
-        if os.path.isfile(self._DATA_FILENAME):
+        if Path(self._DATA_FILENAME).is_file():
             files_ok = True
         else:
             self.logger.log_messages(log_messages.ERR_MESSAGES["other_file_not-found"])
