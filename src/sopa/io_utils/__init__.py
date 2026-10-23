@@ -20,6 +20,5 @@
 #   must be acknowledged.
 
 """Image input/output helpers: a self-contained ENVI reader/writer, 8-bit
-PNG export, and a reader for the orbit files of the original SOFA
-distribution.
+PNG export.
 """
