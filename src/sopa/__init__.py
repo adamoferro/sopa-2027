@@ -19,4 +19,11 @@
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
 
+"""SOPA (SHAllow RADar Open Processing Attempt): low-level processing of SHARAD, the shallow radar sounder on board Mars Reconnaissance Orbiter.
+
+The package provides PDS EDR/RDR and CO-SHARPS data readers, surface-clutter
+simulators, the SOFA synthetic-aperture focuser, DEM and geometry utilities,
+and ENVI/PNG image I/O.
+"""
+
 __version__ = "2027.0.0a0"

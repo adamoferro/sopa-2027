@@ -21,6 +21,11 @@
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
 
+"""Base class of the surface-clutter simulators: frame selection, fast-time
+alignment of the track, and dispatch of the per-frame computation to the
+format-specific simulation callback.
+"""
+
 import numpy as np
 import numpy.typing as npt
 from sopa.processing.utils import ProcessingUtils
@@ -28,7 +33,18 @@ from typing import Any
 
 
 class _SIMBase(object):
-    """docstring for SIMBase."""
+    """Shared implementation of the clutter simulators.
+
+    It selects the frames to simulate (skip in frames or meters), aligns the
+    frames in fast time (receive-window and spacecraft-radius shifts), maps
+    the track to UTM to estimate the local ground direction, and hands the
+    per-frame computation to the subclass' static `_simulate_frame_range`
+    callback. With `simulate_chirp` the simulated image is convolved with
+    the synthetic chirp (pulse compression). Frames are processed serially;
+    `n_processes` is accepted for interface compatibility, but only serial
+    processing is implemented (the 2026 port removed the ray-based parallel
+    branch).
+    """
     _C = 299792458.
 
     def __init__(self, geom_obj: Any, dem_obj: Any, param_obj: Any, n_processes: int = 1, use_data_dt: bool = True, simulate_chirp: bool = False, instr_obj: Any = None, roi_img: npt.NDArray | None = None) -> None:
@@ -73,6 +89,7 @@ class _SIMBase(object):
         self.n_processes = n_processes
 
     def _pre_simulate(self, orbit_data: dict[str, npt.NDArray[np.float64] | float]) -> tuple[int, npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64], float, float] | None:
+        """Validates the frame range, selects the frames to simulate, prepares the aligned track vectors and receive-window reference, and allocates the output images; returns None on invalid ranges."""
         n_input_frames = orbit_data["X"].shape[0]
 
         if self._frames_to_be_simulated_end >= n_input_frames:
@@ -158,6 +175,7 @@ class _SIMBase(object):
         return sub_frame_range_starts, sub_frame_range_stops
 
     def _simulate_chirp(self) -> None:
+        """Convolves the simulated image with the synthetic chirp in the frequency domain (pulse compression of the simulated echo)."""
         SIZE_RANGE_FFT = 4096
         range_weighting_window_ones = np.ones(int(SIZE_RANGE_FFT/2.))
         range_weighting_window_original = np.hanning(SIZE_RANGE_FFT/2.)
@@ -169,6 +187,7 @@ class _SIMBase(object):
         self.sim_image = np.abs(np.fft.ifft(sim_image_fft, axis=0)[:self.sim_image.shape[0], :])
 
     def simulate(self, orbit_data: dict[str, npt.NDArray[np.float64] | float], sim_callback: Any, further_pars: list[float] = []) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.uint8], npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64], tuple[Any, ...]] | None:
+        """Runs the simulation over the selected frames through `sim_callback` and returns the simulated image, its uncertainty mask, the first-return lat/lon, the ground-distance min/max images and the ROI positions; returns None on input errors."""
 
         pre_simulate_output = self._pre_simulate(orbit_data)
         if pre_simulate_output is not None:

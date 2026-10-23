@@ -21,6 +21,13 @@
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
 
+"""Reader for SHARAD EDR products in the PDS archive format: one label
+(.lbl), one binary ancillary orbit file (_a.dat) and one science data file
+(_s.dat) per observation. Echo samples are stored with 4, 6 or 8 bits per
+sample depending on the acquisition mode (subsurface sounding only) and are
+unpacked and statically decompressed on loading.
+"""
+
 # TODO:
 # - find an alternative solution for reading 4- and 6-bit data, because it's very slow now (more than 20 minutes for a 122549-frame dataset)
 # - handle other PRIs
@@ -38,6 +45,8 @@ from typing import Any
 
 
 class EDR(RSData):
+    """PDS EDR dataset: reads and validates the label fields against the expected SHARAD subsurface-sounding acquisition values, reads the binary orbit ancillary file, and unpacks and statically decompresses the raw echo data."""
+
     def __init__(self, dataset_name: str = "no name", pri: float = 0, presumming: int = 0, filename_base: str = "", use_gzip_and_iso8859_1: bool = False, logger: Any = None, read_hk_data: bool = False, keep_data_with_problems: bool = False) -> None:
         super().__init__(dataset_name, pri, presumming, filename_base, use_gzip_and_iso8859_1, logger)
 
@@ -130,10 +139,10 @@ class EDR(RSData):
         return False
 
     def _decode_im(self, im: int) -> tuple[int, int, int]:
-        '''
+        """
         service function that returns a tuple containing the
         main parameters of the acquisition mode
-        '''
+        """
         id = self._IMS.index(im)
         return self._IM_PRESUMMING[id], self._IM_N_BITS_PER_BYTE[id], self._IM_N_BYTES_PER_RECORD[id]
 
@@ -267,6 +276,8 @@ class EDR(RSData):
         return None
 
     def _load_raw_data(self, start_frame: int = 0, end_frame: int = -1) -> bool | None:
+        """Reads the science file, unpacks the 4- or 6-bit samples when required (frame by frame, to limit memory use), and applies the static decompression scaling."""
+
         if not self._header_already_read:
             self._load_ancillary_data(only_header=True)
 
@@ -313,11 +324,11 @@ class EDR(RSData):
         return False
 
     def generate_orbit_data(self, skip: int = 1) -> None:
-        '''
+        """
         Saves in self._orbit_data the following fields as a dictionary,
         interpolated to match 1:skip the frames of the raw data:
         "time_offset_s", "rxwin_time_s", "Lat", "Lon", "Radius", "Vtang", "Vradial", "X", "Y", "Z", "Roll", "Pitch", "Yaw", "SZA"
-        '''
+        """
         geom_fields_to_include = "SUB_SC_PLANETOCENTRIC_LATITUDE", "SUB_SC_EAST_LONGITUDE", "MARS_SC_TANGENTIAL_VELOCITY", "MARS_SC_RADIAL_VELOCITY", "X_MARS_SC_POSITION_VECTOR", "Y_MARS_SC_POSITION_VECTOR", "Z_MARS_SC_POSITION_VECTOR", "SC_ROLL_ANGLE", "SC_PITCH_ANGLE", "SC_YAW_ANGLE", "SOLAR_ZENITH_ANGLE"
         geom_fields_to_include_new_names = ["Lat", "Lon", "Vtang", "Vradial", "X", "Y", "Z", "Roll", "Pitch", "Yaw", "SZA"]
         geom_fields_to_convert_to_m = ["Radius", "X", "Y", "Z"]

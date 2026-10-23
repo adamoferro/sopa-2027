@@ -18,3 +18,7 @@
 #   The use of SOPA or part of it for the creation of any sub-product
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
+
+"""Digital elevation models: readers that return surface radius as a function
+of latitude/longitude, used by the simulators and the focuser.
+"""

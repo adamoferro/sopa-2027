@@ -21,6 +21,11 @@
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
 
+"""Square-facet surface-clutter simulator: every DEM facet contributes its
+area, weighted by the incidence angle, to the range sample corresponding to
+its two-way travel time.
+"""
+
 from sopa.processing.simulators.sim_base import _SIMBase
 from sopa.geometry.coordinate_converter import CoordinateConverter as cc
 import numpy as np
@@ -30,7 +35,20 @@ from typing import Any
 
 
 class sfRSsim(_SIMBase):
-    """docstring for sfRSsim."""
+    """Nadir-looking square-facet clutter simulator.
+
+    Around each frame's sub-spacecraft point it builds a surface grid
+    (along-track and cross-track extents and spacings set by the instance
+    attributes; the grid is sampled at half spacing because the facet
+    approximation uses the mid-points of the facet sides), samples an
+    upscaled, smoothed DEM interpolation on it, and accumulates every
+    facet's approximate area weighted by cos(incidence)^cos_exp into the
+    range sample of its two-way travel time. For each frame it also records
+    the first-return position, the minimum/maximum ground distance
+    associated to each simulated sample, and the geometry (position,
+    incidence and along-track incidence angles) of the facets falling in the
+    ranges of the ROI image, when one is provided.
+    """
 
     def __init__(self, geom_obj: Any, dem_obj: Any, param_obj: Any, n_processes: int = 1, use_data_dt: bool = True, simulate_chirp: bool = False, instr_obj: Any = None, roi_img: npt.NDArray | None = None) -> None:
         super().__init__(geom_obj, dem_obj, param_obj, n_processes, use_data_dt, simulate_chirp, instr_obj, roi_img)
@@ -50,10 +68,12 @@ class sfRSsim(_SIMBase):
         self.act_sim_matrix = np.array([act_sim_range]) * np.ones([len(alt_sim_range), 1])
 
     def simulate(self, orbit_data: dict[str, npt.NDArray[np.float64] | float]) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.uint8], npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64], tuple[Any, ...]] | None:
+        """Runs the facet-based simulation over the selected frames of the given track."""
         return super().simulate(orbit_data, sfRSsim._simulate_frame_range, further_pars=[self.cos_exp])
 
     @staticmethod       # defined static to allow calling from ray avoiding the "pickling" of the object
     def _simulate_frame_range(id: int, n_processes: int, orbit_xyz: tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]], frame_range: npt.NDArray[np.int64], sim_n_samples: int, local_direction_g: npt.NDArray[np.float64], UTMNorthing_g: npt.NDArray[np.float64], UTMEasting_g: npt.NDArray[np.float64], UTMZone_g: list[str], rxwin_ref: float, input_scr_data_shifts_alignment_t: npt.NDArray[np.float64], dt: float, dem_obj: Any, geom_obj: Any, alt_sim_matrix: npt.NDArray[np.float64], act_sim_matrix: npt.NDArray[np.float64], gaussian_filter_sigma: int, further_pars: list[float], roi_img: npt.NDArray | None = None) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.uint8], npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64], tuple[dict[int, npt.NDArray[np.float64]], dict[int, npt.NDArray[np.float64]], dict[int, npt.NDArray[np.float64]], dict[int, npt.NDArray[np.float64]]]]:
+        """Per-frame facet computation described in the class docstring: surface-grid DEM sampling, facet normals/approximate areas, two-way travel times, image accumulation, and first-return/ground-distance/ROI bookkeeping."""
         cos_exp = further_pars[0]
 
         _C = 299792458.

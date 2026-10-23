@@ -18,3 +18,8 @@
 #   The use of SOPA or part of it for the creation of any sub-product
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
+
+"""Image input/output helpers: a self-contained ENVI reader/writer, 8-bit
+PNG export, and a reader for the orbit files of the original SOFA
+distribution.
+"""

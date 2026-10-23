@@ -18,3 +18,8 @@
 #   The use of SOPA or part of it for the creation of any sub-product
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
+
+"""Processing chain: parameter containers, shared processing utilities,
+surface-clutter (radargram) simulators and the SOFA synthetic-aperture
+focuser.
+"""

@@ -21,6 +21,11 @@
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
 
+"""Reader for MOLA MEGDR digital elevation maps: ENVI images of radius
+values with lat/lon <-> pixel conversions, per-point radius lookup and
+interpolated, upscaled sub-DEM extraction.
+"""
+
 # TODO add limit checks
 
 from sopa.dem.dem_base import DEMBase
@@ -61,6 +66,7 @@ class MOLA(DEMBase):
         self._MOLA_MAX_LONG = self._MOLA_MIN_LONG + self.dem_shape[1]*self.deg_sampling
 
     def read(self) -> bool:
+        """Loads the DEM image with the ENVI reader, unless an image was already provided to the constructor or loaded before."""
         if self.dem is not None:
             print("WARNING: dem has been already loaded or set by init. Not loading again.")
         elif self.filename_base != "":
@@ -75,10 +81,12 @@ class MOLA(DEMBase):
         return False
 
     def reset(self) -> None:
+        """Frees the loaded DEM image."""
         del self.dem
         self.dem = None
 
     def get_dem_radius_from_lat_lon(self, lat: float | npt.NDArray[np.float64], lon: float | npt.NDArray[np.float64]) -> npt.NDArray[np.int32] | None:
+        """Returns the DEM radius (in m, MOLA offset included) at the requested lat/lon points; points outside the DEM coverage receive the dummy value."""
         if self.dem is not None:
             mola_x, mola_y = self.to_XY_from_LL(lat, lon)
             return self._XY_vectors_to_radius(mola_x, mola_y)
@@ -87,6 +95,7 @@ class MOLA(DEMBase):
             return None
 
     def get_scaled_subdem_from_latlon_limits(self, lat_n: float, lat_s: float, lon_e: float, lon_w: float, scale_factor: float = 4) -> MOLA | None:
+        """Extracts the sub-image covering the given lat/lon limits (snapped to the DEM grid), smooths and upscales it by `scale_factor`, and returns it as a new MOLA instance covering the same geographic limits; used by the simulators to sample facet geometry on a grid finer than the native DEM."""
         if self.dem is not None:
             lat_n_local = np.ceil(lat_n / self.deg_sampling) * self.deg_sampling
             lat_n_local = lat_n_local if lat_n_local <= self._MOLA_MAX_LAT else self._MOLA_MAX_LAT
@@ -131,6 +140,7 @@ class MOLA(DEMBase):
             return None
 
     def to_XY_from_LL(self, lat: float | npt.NDArray[np.float64], long: float | npt.NDArray[np.float64], return_as_float: bool = False) -> tuple[npt.NDArray[np.float64] | npt.NDArray[np.int64], npt.NDArray[np.float64] | npt.NDArray[np.int64]]:
+        """Converts lat/lon (degrees) to DEM pixel coordinates, by default rounded to integer pixel indices; out-of-range points are flagged in the internal mask and clamped to the upper-left pixel (to be replaced by the dummy value by the callers)."""
         mola_x = (long - self._MOLA_MIN_LONG) / self.deg_sampling
         mola_y = (self._MOLA_MAX_LAT - lat) / self.deg_sampling
 
@@ -154,11 +164,13 @@ class MOLA(DEMBase):
         return (mola_x, mola_y)
 
     def to_LL_from_XY(self, x: float, y: float) -> tuple[float, float]:
+        """Converts DEM pixel coordinates back to lat/lon (degrees)."""
         lat = -y * self.deg_sampling + self._MOLA_MAX_LAT
         lon = x * self.deg_sampling + self._MOLA_MIN_LONG
         return (lat, lon)
 
     def XY_ranges_to_radius(self, x_min: int, x_max: int, y_min: int, y_max: int, add_offset: bool = True) -> npt.NDArray[np.int32]:
+        """Returns the DEM sub-image for the given pixel ranges as radii in m, adding the MOLA radius offset (3396000 m) on request. The int32 upcast is required by numpy>=2 (NEP 50), which no longer promotes int16+int silently (see the in-code comment)."""
         # astype(int32): numpy>=2 (NEP 50) raises OverflowError when adding the
         # MOLA radius offset (3396000 m) to an int16 DEM array (old numpy
         # silently promoted the result type)
@@ -166,6 +178,7 @@ class MOLA(DEMBase):
         return output_dem
 
     def _XY_vectors_to_radius(self, x_vect: npt.NDArray[np.int64], y_vect: npt.NDArray[np.int64], add_offset: bool = True) -> npt.NDArray[np.int32]:
+        """Per-point variant of `XY_ranges_to_radius` for coordinate vectors: out-of-DEM points flagged by the last `to_XY_from_LL` call receive the dummy value."""
         # get vector containing MOLA radius corresponding to each frame to be processed (in the same order)
         output_dem = self.dem[y_vect, x_vect].copy().astype("int32") + int(add_offset)*self.offset_to_be_added
         output_dem[self._mask] = self.dummy_value

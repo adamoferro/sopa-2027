@@ -21,6 +21,10 @@
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
 
+"""Base class of the radar-sounder dataset readers: file loading, orbit data
+handling and read-only access to the echo matrix.
+"""
+
 # TODO:
 # - modify print with logger
 
@@ -31,7 +35,16 @@ from typing import Any
 
 
 class RSData():
-    """docstring for RSData."""
+    """Base class of the dataset readers.
+
+    It stores the dataset metadata (name, number of frames, PRI, presumming
+    factor, base filename), selects the file-open function (plain UTF-8 or
+    gzip/ISO-8859-1) and defines the loading interface that format-specific
+    subclasses implement: `load` dispatches to `_load_from_file`, and
+    `generate_orbit_data` builds the per-frame orbit-data dictionary. The
+    echo matrix and the orbit data are exposed read-only through the `data`
+    and `orbit_data` properties.
+    """
 
     def __init__(self, dataset_name: str = "no name", pri: float = 0, presumming: int = 0, filename_base: str = "", use_gzip_and_iso8859_1: bool = False, logger: Any = None) -> None:
         self.dataset_name = dataset_name
@@ -63,6 +76,7 @@ class RSData():
 
     @property
     def data(self) -> npt.NDArray | None:
+        """Echo matrix (read-only); accessing it before loading prints an error and returns None."""
         if self._data is None:
             print("ERROR: data not yet read.")
             return None
@@ -75,6 +89,7 @@ class RSData():
 
     @property
     def orbit_data(self) -> dict[str, npt.NDArray | float] | None:
+        """Orbit-data dictionary (read-only); accessing it before generation prints an error and returns None."""
         if self._orbit_data is None:
             print("ERROR: orbit data not yet generated.")
             return None
@@ -92,6 +107,7 @@ class RSData():
         return output_str
 
     def load(self, mode: str = "full", force_reload: bool = False) -> bool | None:            # mode can be: "all", "ancillary", "data". Not all implementation may be able to provide different behaviors
+        """Loads the dataset identified by `filename_base`, either completely (mode="full") or limiting the work to the ancillary data or to the echo data; with `force_reload` the already-read parts are read again."""
         if self.filename_base != "":
             return self._load_from_file(mode, force_reload)
         else:
@@ -99,10 +115,12 @@ class RSData():
             return False
 
     def set_orbit_data_from_ext(self, ext_orbit_data: dict[str, npt.NDArray | float]) -> None:
+        """Installs externally produced orbit data, bypassing `generate_orbit_data`."""
         self._orbit_data = ext_orbit_data
 
     def _load_from_file(self, mode: str | None, force_reload: bool) -> bool | None:      # "virtual" method
         raise NotImplementedError
 
     def generate_orbit_data(self, skip: int) -> None:                # generates orbit data which match 1:1 with the data
+        """Builds the per-frame orbit-data dictionary of the dataset; implemented by the format-specific subclasses."""
         raise NotImplementedError

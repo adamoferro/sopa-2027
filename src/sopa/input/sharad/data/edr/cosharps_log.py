@@ -21,6 +21,10 @@
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
 
+"""Log messages of the CO-SHARPS EDR reader
+(sopa.input.sharad.data.edr.cosharps), keyed by error condition.
+"""
+
 ERR_MESSAGES = dict()
 ERR_MESSAGES["argparse"] = "ERROR: problem while parsing input parameters."
 ERR_MESSAGES["frame_skip"] = "ERROR: frame skip must be greater than zero."

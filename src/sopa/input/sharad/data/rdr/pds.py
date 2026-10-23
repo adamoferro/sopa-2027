@@ -21,6 +21,12 @@
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
 
+"""Reader for SHARAD RDR products in the PDS archive format: one label
+(.lbl) plus one data file (.dat) per observation. Each fixed-length record
+holds 667 complex focused echo samples, the receive-window opening time, a
+per-frame range shift and the orbit/geometric ancillary fields.
+"""
+
 # TODO:
 #
 
@@ -34,6 +40,8 @@ from typing import Any
 
 
 class RDR(RSData):
+    """PDS RDR dataset: reads and validates the label fields, aligns the per-frame range shifts by zero padding, and exposes both the complex focused echo matrix and the full structured records."""
+
     def __init__(self, dataset_name: str = "no name", pri: float = 0, presumming: int = 0, filename_base: str = "", use_gzip_and_iso8859_1: bool = False, logger: Any = None, read_hk_data: bool = False) -> None:
         super().__init__(dataset_name, pri, presumming, filename_base, use_gzip_and_iso8859_1, logger)
 
@@ -94,10 +102,10 @@ class RDR(RSData):
         return False
 
     def _decode_im(self, im: int) -> int:
-        '''
+        """
         service function that returns a tuple containing the
         main parameters of the acquisition mode
-        '''
+        """
         id = self._IMS.index(im)
         return self._IM_PRESUMMING[id]
 
@@ -150,6 +158,7 @@ class RDR(RSData):
         return zero_padded_data
 
     def _load_rdr_data(self, start_frame: int = 0, end_frame: int = -1) -> bool | None:
+        """Reads the fixed-length RDR records, builds the complex echo matrix and aligns the per-frame range shifts (expressed in ADC sampling times) by zero padding."""
         if not self._header_already_read:
             # header parsing
             header_data_grouped = self._read_rdr_data_header()
@@ -245,11 +254,11 @@ class RDR(RSData):
         return False
 
     def generate_orbit_data(self, skip: int = 1) -> None:
-        '''
+        """
         Saves in self._orbit_data the following fields as a dictionary,
         interpolated to match 1:skip the frames of the raw data:
         "time_offset_s", "rxwin_time_s", "Lat", "Lon", "Radius", "Vtang", "Vradial", "X", "Y", "Z", "Roll", "Pitch", "Yaw", "SZA"
-        '''
+        """
         geom_fields_to_include = "SUB_SC_PLANETOCENTRIC_LATITUDE", "SUB_SC_EAST_LONGITUDE", "MARS_SC_TANGENTIAL_VELOCITY", "MARS_SC_RADIAL_VELOCITY", "X_MARS_SC_POSITION_VECTOR", "Y_MARS_SC_POSITION_VECTOR", "Z_MARS_SC_POSITION_VECTOR", "SC_ROLL_ANGLE", "SC_PITCH_ANGLE", "SC_YAW_ANGLE", "SOLAR_ZENITH_ANGLE"
         geom_fields_to_include_new_names = ["Lat", "Lon", "Vtang", "Vradial", "X", "Y", "Z", "Roll", "Pitch", "Yaw", "SZA"]
         geom_fields_to_convert_to_m = ["Radius", "X", "Y", "Z"]

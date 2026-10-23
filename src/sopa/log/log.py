@@ -21,28 +21,40 @@
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
 
+"""Minimal logging: loggers accumulate messages in a list, optionally echo
+them to the console, and append them to a text file on request.
+"""
+
 class _logger_base():
+    """Interface of the loggers used by the dataset readers and the processing classes."""
+
     def __init__(self, verbose: bool = False) -> None:
         raise NotImplementedError
 
     def log_messages(self, new_message: str) -> None:
+        """Handles a new message (no-op in the base class)."""
         pass
 
     def log_write(self, filename: str) -> None:
+        """Writes the buffered messages to a file (no-op in the base class)."""
         pass
 
 
 class logger(_logger_base):
+    """Collects log messages in memory, printing each of them when verbose, and appends the buffer to a text file with `log_write`."""
+
     def __init__(self, verbose: bool = False) -> None:
         self.LOG_MESSAGES = list()
         self.verbose = verbose
 
     def log_messages(self, new_message: str) -> None:
+        """Appends the message to the in-memory buffer and prints it when verbose."""
         self.LOG_MESSAGES.append(new_message)
         if self.verbose:
             print(new_message)
 
     def log_write(self, filename: str) -> None:
+        """Appends the buffered messages to the given text file and empties the buffer."""
         try:
             with open(filename, 'a') as fp:
                 for lm in self.LOG_MESSAGES:
@@ -53,5 +65,7 @@ class logger(_logger_base):
 
 
 class fake_logger(_logger_base):
+    """Discards every message; used as the default logger when none is supplied."""
+
     def __init__(self, verbose: bool = False) -> None:
         pass

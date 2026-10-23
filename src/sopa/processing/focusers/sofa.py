@@ -21,6 +21,10 @@
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
 
+"""SOFA (SHARAD Focuser): frequency-domain synthetic-aperture focuser for
+SHARAD raw echo data.
+"""
+
 # TODO
 # - estimate platform velocity from data instead of using reference velocity
 # - calculate _SIZE_RANGE_FFT automatically? (next pow2?)
@@ -34,7 +38,27 @@ from typing import Any
 
 
 class SOFA(object):
-    """docstring for SOFA."""
+    """Synthetic-aperture focuser for SHARAD raw data.
+
+    For every frame to focus it range-compresses the echoes of the synthetic
+    aperture (matched filter in the frequency domain), applies the optional
+    range-migration correction (computed against the DEM radius profile) and
+    the optional Doppler phase compensation, Fourier-transforms the aperture
+    in azimuth, and reduces the azimuth power spectrum to one output sample
+    by multilooking. For each output sample the multilook Doppler window is
+    centered on the maximum of the power spectrum found within a search
+    window around the aperture center: the search half-width is a parameter
+    of the focusing code (currently zero, i.e. fixed zero-Doppler centering),
+    and wider values de-center the window so that it follows the Doppler
+    maximum. The multilook power can be decomposed into a weighted
+    combination of Gaussian-filtered spectra (gauss_rec_n_filters /
+    gauss_rec_alpha). The squint angle offsets the aperture with respect to
+    the frame to focus (positive: look ahead, negative: look behind). Frames
+    are processed in blocks; `n_processes` is accepted for interface
+    compatibility, but only serial processing is implemented (the 2026 port
+    removed the ray-based parallel branch).
+    """
+
     _C = 299792458.
 
     def __init__(self, instr_obj: Any, geom_obj: Any, dem_radius_profile: npt.NDArray[np.int32], data_obj: Any, param_obj: Any, n_processes: int = 1, read_block_size_max: int = 5000, debug_mode: bool = False) -> None:
@@ -154,6 +178,7 @@ class SOFA(object):
                 self._azimuth_weighting_window_original = eval("np." + awfs + "(self._n_aperture_frames)")
 
     def focus(self) -> npt.NDArray[np.float64] | None:
+        """Focuses the selected frames and returns the output image (one column per focused frame); validates the frame range against the input data and computes the actual frame selection (skip in frames or meters, aperture extent and squint offset), returning None on invalid ranges."""
 
         if self._frames_to_be_focused_end >= self._n_input_frames:
             print("ERROR: last frame to be focused after the end of the input data.")
@@ -324,6 +349,7 @@ class SOFA(object):
 
     @staticmethod
     def _block_focus(block_id: int, input_data_frame_start: int, input_data_frame_end: int, frames_to_be_focused_in_this_block: npt.NDArray[np.int64], frames_to_be_processed_start: int, sizeFFT1: int, data_samples: npt.NDArray[np.int64], phasor: npt.NDArray[np.complex128], c: float, wc: float, input_rxwin_data_t: npt.NDArray[np.float64], chirp_fft_conj: npt.NDArray[np.complex128], N_OUTPUT_SAMPLES: int, OUTPUT_SAMPLES: npt.NDArray[np.int64], dt_compr: float, input_scr_data: npt.NDArray[np.float64], input_theta: npt.NDArray[np.float64], input_phi: npt.NDArray[np.float64], n_half_aperture_frames: int, n_aperture_frames: int, CORRECT_RANGE_MIGRATION: bool, input_scx_data: npt.NDArray[np.float64], input_scy_data: npt.NDArray[np.float64], input_scz_data: npt.NDArray[np.float64], USE_DOPPLER_CORRECTION: bool, lmbda_min: float, azimuth_weighting_windows: npt.NDArray[np.float64], N_GAUSSIAN_FILTERS: int, std_devs: list[float], gf_power_coefficients: list[float], doppler_half_window_width: int, squint_offset_approx_frames: int, t_frame_base: npt.NDArray[np.float64], dem_radius_profile: npt.NDArray[np.int32], fftfreqs: npt.NDArray[np.float64], delay_start_shifts: npt.NDArray[np.float64], data_obj: Any, geom_obj: Any) -> tuple[npt.NDArray[np.float64], float, float]:
+        """Focuses one block of frames (range compression, per-aperture-frame delays, range-migration and Doppler phase corrections, azimuth FFT and multilooking) and returns the block image together with the average aperture-center and aperture-extent angles accumulated along the block."""
 
         input_data = data_obj.data[:, input_data_frame_start:input_data_frame_end]
         read_block_size_real = input_data.shape[1]

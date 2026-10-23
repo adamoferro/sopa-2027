@@ -21,6 +21,10 @@
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
 
+"""Log messages of the PDS EDR reader (sopa.input.sharad.data.edr.pds),
+keyed by error condition.
+"""
+
 ERR_MESSAGES = dict()
 ERR_MESSAGES["header_file_generic"] = "ERROR: problem while parsing header file."
 ERR_MESSAGES["header_file_read"] = "ERROR: cannot read or cannot parse header file."

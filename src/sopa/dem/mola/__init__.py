@@ -18,3 +18,7 @@
 #   The use of SOPA or part of it for the creation of any sub-product
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
+
+"""Readers for MOLA (Mars Orbiter Laser Altimeter) MEGDR digital elevation
+maps.
+"""

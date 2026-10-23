@@ -18,3 +18,7 @@
 #   The use of SOPA or part of it for the creation of any sub-product
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
+
+"""Readers for SHARAD RDR products: focused radargrams released by the PDS
+and by the US SHARAD team, with their geometric ancillary data.
+"""

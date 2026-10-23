@@ -21,6 +21,10 @@
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
 
+"""Log messages of the PDS US RDR reader
+(sopa.input.sharad.data.rdr.pds_us), keyed by error condition.
+"""
+
 ERR_MESSAGES = dict()
 ERR_MESSAGES["orbit_file_not-found"] = "ERROR: orbit file not present."
 ERR_MESSAGES["orbit_file_read"] = "ERROR: cannot read orbit file."

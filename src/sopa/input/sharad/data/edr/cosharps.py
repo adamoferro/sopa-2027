@@ -21,6 +21,11 @@
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
 
+"""Reader for SHARAD EDR products in the CO-SHARPS format: one
+tab-separated header file, one CSV aux file, one housekeeping file, one or
+more orbit files and one 8-bit science data file per acquisition mode.
+"""
+
 # TODO:
 # - add skip to _load_raw_data
 # - handle data where more "Mode"s are present
@@ -39,6 +44,8 @@ from typing import Any
 
 
 class EDR(RSData):
+    """CO-SHARPS EDR dataset: reads and validates the header fields, the aux file (frame time offsets and receive-window delays), the latest available orbit file and, on request, the housekeeping telemetry, then loads the 8-bit raw echo data of the first acquisition mode."""
+
     def __init__(self, dataset_name: str = "no name", pri: float = 0, presumming: int = 0, filename_base: str = "", use_gzip_and_iso8859_1: bool = False, logger: Any = None, read_hk_data: bool = False, keep_data_with_problems: bool = False) -> None:
         super().__init__(dataset_name, pri, presumming, filename_base, use_gzip_and_iso8859_1, logger)
 
@@ -239,6 +246,7 @@ class EDR(RSData):
 
     def _read_raw_data_geom_file(self) -> npt.NDArray | None:
         def parsetime(v: str) -> np.datetime64:
+            """Converts a text timestamp to numpy.datetime64."""
             return np.datetime64(v)
 
         try:
@@ -261,6 +269,7 @@ class EDR(RSData):
         return None
 
     def _read_raw_data_hk_file(self) -> dict[str, npt.NDArray[np.float64]] | None:
+        """Parses the housekeeping telemetry lines (hex-encoded engineering data of the subsurface sounding mode) into timestamped temperatures, voltages and transmitter levels."""
         date_time_ref_obj = datetime.datetime.fromtimestamp(315532800, tz=datetime.timezone.utc)
         try:
             with open(self._HK_FILENAME, 'rt') as fp:
@@ -286,7 +295,7 @@ class EDR(RSData):
         return None
 
     def _load_raw_data(self, start_frame: int = 0, end_frame: int = -1) -> bool | None:
-        '''
+        """
         Read CO-SHARPS raw data (filenames in the form OBS_xxxxxxxxx_y_Mode_00z.dat)
         - start_frame and end_frame can be in the range [0, OBS_NUMBER_OF_FRAMES-1]
             (Python array indexing convention)
@@ -296,7 +305,7 @@ class EDR(RSData):
         - if an error occurs, the function returns False
 
         author: Adamo Ferro, 2019
-        '''
+        """
         N_SAMPLES = 3600
         frame_count = -1
         if start_frame < 0 or (end_frame != -1 and start_frame > end_frame):
@@ -317,18 +326,18 @@ class EDR(RSData):
 
     @staticmethod
     def _fill_data_holes(data: npt.NDArray[np.float64], hole_max_value: float = 0) -> npt.NDArray[np.float64]:
-        '''
+        """
         Fill holes in data using a nearest neighbour approach.
-        '''
+        """
         ids = nd.distance_transform_edt(data <= hole_max_value, return_distances=False, return_indices=True)
         return data[tuple(ids)]
 
     def generate_orbit_data(self, skip: int = 1) -> None:
-        '''
+        """
         Saves in self._orbit_data the following fields as a dictionary,
         interpolated to match 1:skip the frames of the raw data:
         "time_offset_s", "rxwin_time_s", "Lat", "Lon", "Radius", "Vtang", "Vradial", "X", "Y", "Z", "Roll", "Pitch", "Yaw", "SZA"
-        '''
+        """
         geom_fields_to_interpolate = ["Lat", "Lon", "Radius", "Vtang", "Vradial", "X", "Y", "Z", "Roll", "Pitch", "Yaw", "SZA"]
         geom_fields_to_convert_to_m = ["Radius", "X", "Y", "Z"]
         if self._ancillary_already_read:

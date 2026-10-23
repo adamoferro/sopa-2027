@@ -21,6 +21,11 @@
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
 
+"""Matplotlib display of radargrams (focused, simulated or ground-distance
+products) with optional dB conversion and histogram- or percentile-based
+dynamic range selection.
+"""
+
 import matplotlib
 from matplotlib import pyplot as pp
 import numpy as np
@@ -28,6 +33,8 @@ import numpy.typing as npt
 
 
 class _BaseRadargramPlot(object):
+    """Common implementation of the radargram plots: prepares the image (optional dB conversion), the display limits (fixed, from the data, or from the histogram of the central 0.5-99.5% of the values) and the vertical crop."""
+
     def __init__(self, image: npt.NDArray[np.float64], db_output: bool = False, min_value: float = -1, max_value: float = -1, method: str | None = None, top_point: int = 0, bottom_point: int = -1, title: str = "") -> None:
         self._db_output = db_output
         if self._db_output:
@@ -70,6 +77,7 @@ class _BaseRadargramPlot(object):
         return be[h_ok_ids[0]], be[h_ok_ids[-1]]
 
     def plot(self, cmap: str | matplotlib.colors.Colormap = "gray") -> None:
+        """Shows the prepared image with the given colormap and limits."""
         pp.figure(figsize=(12, 6))
         pp.imshow(self._image[self._top_point:self._bottom_point, :], cmap=cmap, vmin=self._min_value, vmax=self._max_value, interpolation="none")
         pp.title(self._title, fontweight="bold")
@@ -80,26 +88,27 @@ class _BaseRadargramPlot(object):
 
 
 class RadargramPlot(_BaseRadargramPlot):
-    """docstring"""
+    """Displays a focused radargram, converted to dB and with histogram-based limits by default."""
 
     def __init__(self, image: npt.NDArray[np.float64], db_output: bool = True, min_value: float = -1, max_value: float = -1, method: str = "hist", top_point: int = 0, bottom_point: int = -1, title: str = "") -> None:
         super().__init__(image, db_output, min_value, max_value, method, top_point, bottom_point, title)
 
 
 class SimulationPlot(_BaseRadargramPlot):
-    """docstring"""
+    """Displays a simulated radargram (linear power, no dB conversion)."""
 
     def __init__(self, image: npt.NDArray[np.float64], min_value: float = -1, max_value: float = -1, method: str = "hist", top_point: int = 0, bottom_point: int = -1, title: str = "") -> None:
         super().__init__(image, False, min_value, max_value, method, top_point, bottom_point, title)
 
 
 class GroundDistancePlot(_BaseRadargramPlot):
-    """docstring"""
+    """Displays the minimum/maximum ground-distance images produced by the simulators (no dB conversion, default range 0-20 m); not-a-number values are rendered black."""
 
     def __init__(self, image: npt.NDArray[np.float64], min_value: float = 0, max_value: float = 20, top_point: int = 0, bottom_point: int = -1, title: str = "") -> None:
         super().__init__(image, False, min_value, max_value, None, top_point, bottom_point, title)
 
     def plot(self) -> None:
+        """Same display as the base class, with a colormap whose not-a-number values are rendered black."""
         nan_cmap = matplotlib.colormaps["gist_rainbow"].copy()      # 2026 port: matplotlib.cm.get_cmap was removed
         nan_cmap.set_bad(color='black')
         super().plot(cmap=nan_cmap)

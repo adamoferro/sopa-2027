@@ -21,8 +21,11 @@
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
 
+"""Base class for radar-sounder instrument definitions.
+"""
+
 class RSInstrument():
-    """docstring for RSInstrument."""
+    """Stores the physical and acquisition parameters common to radar sounders: center frequency, bandwidth, fast-time sampling frequency, chirp duration and platform reference velocity."""
 
     def __init__(self, name: str, frequency: float, bandwidth: float, fast_time_sampling_frequency: float, chirp_duration: float, ref_v_platform: float) -> None:
         self.name = name

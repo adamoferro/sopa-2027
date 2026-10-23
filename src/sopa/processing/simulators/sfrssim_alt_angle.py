@@ -21,6 +21,12 @@
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
 
+"""Facet simulator dedicated to region-of-interest (ROI) analysis: instead
+of a full radargram it collects, for each ROI range sample, the
+distribution of the along-track incidence angles of the contributing
+facets.
+"""
+
 from sopa.processing.simulators.sim_base import _SIMBase
 from sopa.geometry.coordinate_converter import CoordinateConverter as cc
 import numpy as np
@@ -31,7 +37,17 @@ from typing import Any
 
 
 class sfRSsimAltAngle(_SIMBase):
-    """docstring for sfRSsimAltAngle."""
+    """Facet simulator for ROI incidence-angle statistics.
+
+    Builds the same facet geometry as `sfRSsim` on a finer grid (25 m
+    spacing, 16x DEM upscale), keeps only the facets whose range sample
+    falls within the ROI image (mandatory), filters them by incidence angle
+    (global incidence within +-2 degrees, along-track incidence between 0.25
+    and 2 degrees in absolute value), and accumulates across frames the
+    argument of the histogram maximum of the along-track incidence angles of
+    each ROI sample, together with its count, into a pandas DataFrame. The
+    simulation image itself is not filled.
+    """
 
     def __init__(self, geom_obj: Any, dem_obj: Any, param_obj: Any, n_processes: int = 1, use_data_dt: bool = True, simulate_chirp: bool = True, instr_obj: Any = None, roi_img: npt.NDArray | None = None) -> None:
 
@@ -55,10 +71,12 @@ class sfRSsimAltAngle(_SIMBase):
         self.act_sim_matrix = np.array([act_sim_range]) * np.ones([len(alt_sim_range), 1])
 
     def simulate(self, orbit_data: dict[str, npt.NDArray[np.float64] | float]) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.uint8], npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64], tuple[Any, ...]] | None:
+        """Runs the ROI incidence-angle analysis over the selected frames of the given track; only the DataFrame of histogram arguments is filled, the image outputs are returned empty."""
         return super().simulate(orbit_data, sfRSsimAltAngle._simulate_frame_range, further_pars=[self.cos_exp])
 
     @staticmethod       # defined static to allow calling from ray avoiding the "pickling" of the object
     def _simulate_frame_range(id: int, n_processes: int, orbit_xyz: tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]], frame_range: npt.NDArray[np.int64], sim_n_samples: int, local_direction_g: npt.NDArray[np.float64], UTMNorthing_g: npt.NDArray[np.float64], UTMEasting_g: npt.NDArray[np.float64], UTMZone_g: list[str], rxwin_ref: float, input_scr_data_shifts_alignment_t: npt.NDArray[np.float64], dt: float, dem_obj: Any, geom_obj: Any, alt_sim_matrix: npt.NDArray[np.float64], act_sim_matrix: npt.NDArray[np.float64], gaussian_filter_sigma: int, further_pars: list[float], roi_img: npt.NDArray | None = None) -> tuple[npt.NDArray[np.float64], None, None, None, None, None, tuple[None, None, None, None, pd.DataFrame]]:
+        """Per-frame ROI computation described in the class docstring: facet selection by ROI sample and incidence-angle limits, and accumulation of the along-track-angle histogram arguments."""
         cos_exp = further_pars[0]
 
         _C = 299792458.

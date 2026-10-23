@@ -21,6 +21,10 @@
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
 
+"""Pure-numpy ENVI format reader/writer (data file plus companion .hdr
+header, BSQ interleave, little-endian on write).
+"""
+
 # 2026 port: the original version of this module used the GDAL python
 # bindings (osgeo), which are not installable via pip for recent Python
 # versions. GDAL has been removed completely: the module is now a
@@ -65,6 +69,7 @@ _ENVI_DATATYPE2NUMPY = {
 
 
 def read(filename: str) -> npt.NDArray | None:
+    """Reads the first band of an ENVI file into a numpy array, honoring the header's data type, byte order and header offset; returns None on error."""
     hdr_filename = filename + ".hdr"
     if not Path(hdr_filename).is_file():
         print(f"ERROR: cannot find ENVI header file {hdr_filename}")
@@ -96,6 +101,7 @@ def read(filename: str) -> npt.NDArray | None:
 
 
 def write(filename: str, np_array: npt.NDArray, complex_output: bool = False) -> bool:
+    """Writes a numpy array as an ENVI file (little-endian BSQ data plus .hdr); complex input is converted to power (|z|^2, float64) unless `complex_output` is set."""
     if (np_array.dtype.name == "complex64" or np_array.dtype.name == "complex128") and not complex_output:
         np_array_tmp = np.abs(np_array).astype("float64")**2.
     else:
@@ -109,6 +115,7 @@ def write(filename: str, np_array: npt.NDArray, complex_output: bool = False) ->
 
 
 def _read_envi_header(hdr_filename: str) -> dict[str, str]:
+    """Parses the "key = value" lines of an .hdr file, skipping multi-line { ... } values."""
     header = dict()
     with open(hdr_filename, "rt") as fp:
         line = fp.readline()
@@ -131,6 +138,7 @@ def _read_envi_header(hdr_filename: str) -> dict[str, str]:
 
 
 def _write_numpy(filename: str, np_array: npt.NDArray) -> bool:
+    """Writes the binary data in little-endian byte order followed by the standard .hdr text."""
     envi_dtype = _NUMPY2ENVI_DATATYPE[np_array.dtype.name]
     hdr_filename = filename + ".hdr"
     with open(filename, "wb") as fp:

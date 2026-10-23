@@ -1,7 +1,12 @@
+"""Reader for the binary orbit files of the original SOFA distribution
+(one file per field, with suffixes _x, _y, _z, _lat, _long, _rxwin).
+"""
+
 import numpy as np
 import numpy.typing as npt
 
 def read_sofa_sharad_orbit_input(filename_base: str, pri: float = 1428e-6) -> dict[str, npt.NDArray[np.float64]]:
+    """Reads the SOFA orbit files for the given base filename and builds the orbit-data dictionary (cartesian position, lat/lon, radius, receive-window opening times), applying the PRI-dependent receive-window delay and the digital chirp generator delay."""
     FAST_TIME_SAMPLING_FREQUENCY = 80e6/3.
     dt = 1./FAST_TIME_SAMPLING_FREQUENCY
     DCG_DELAY = 11.98e-6      # digital chirp generator delay, used in the calculation of the rxwin opening time

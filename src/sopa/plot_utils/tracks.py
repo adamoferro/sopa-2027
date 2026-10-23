@@ -21,6 +21,11 @@
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
 
+"""Matplotlib display of the spacecraft ground track and of simulated
+return positions over DEM radius images, with lat/lon axis labels derived
+from the DEM sampling.
+"""
+
 from matplotlib import pyplot as pp
 import matplotlib.patches as mpatches
 import numpy as np
@@ -29,7 +34,7 @@ from typing import Any
 
 
 class TrackPlotOnDEM(object):
-    """docstring"""
+    """Displays a DEM portion with the spacecraft ground track on top."""
 
     def __init__(self, dem_obj: Any, track_lats: npt.NDArray[np.float64], track_lons: npt.NDArray[np.float64], auto_show: bool = False, title: str | None = None) -> None:
         self._dem_obj = dem_obj
@@ -64,6 +69,8 @@ class TrackPlotOnDEM(object):
         return labels_x, labels_y, labels_x_pos, labels_y_pos
 
     def plot(self) -> None:
+        """Draws the DEM image and the ground track, with lat/lon tick labels derived from the DEM sampling and geometry."""
+
         min_x, max_x, min_y, max_y, sc_track_x, sc_track_y = self._calculate_xy_limits(self._track_lats, self._track_lons)
 
         min_lat, min_long = self._dem_obj.to_LL_from_XY(min_x, max_y)
@@ -84,12 +91,13 @@ class TrackPlotOnDEM(object):
         self.show(explicit=False)
 
     def show(self, explicit: bool = True) -> None:
+        """Calls pyplot.show when requested explicitly or when auto_show was set at construction (used internally to defer the display until the figure is complete)."""
         if explicit or self._auto_show:
             pp.show()
 
 
 class TrackAndFirstReturnsPlotOnDEM(TrackPlotOnDEM):
-    """docstring"""
+    """Displays the spacecraft ground track together with the simulated first-return positions on the DEM."""
 
     def __init__(self, dem_obj: Any, track_lats: npt.NDArray[np.float64], track_lons: npt.NDArray[np.float64], fr_lats: npt.NDArray[np.float64], fr_lons: npt.NDArray[np.float64], auto_show: bool = False, title: str | None = None) -> None:
         super().__init__(dem_obj, track_lats, track_lons, auto_show=auto_show, title=None)
@@ -101,6 +109,8 @@ class TrackAndFirstReturnsPlotOnDEM(TrackPlotOnDEM):
             self._title = "Spacecraft ground track (yellow) vs.\nsimulated first return positions (magenta) on DEM [km]"
 
     def plot(self) -> None:
+        """Draws the DEM portion covering the first-return positions, the ground-track points within it, and the first-return positions."""
+
         min_x, max_x, min_y, max_y, fr_x, fr_y = self._calculate_xy_limits(self._fr_lats, self._fr_lons)
         _, _, _, _, sc_track_x, sc_track_y = self._calculate_xy_limits(self._track_lats, self._track_lons)
 
@@ -130,7 +140,7 @@ class TrackAndFirstReturnsPlotOnDEM(TrackPlotOnDEM):
 
 
 class TrackAndROIReturnsPlotOnDEM(TrackPlotOnDEM):
-    """docstring"""
+    """Displays the spacecraft ground track together with the simulated positions of region-of-interest (ROI) returns on the DEM, optionally alpha/color-coded by incidence angle (global incidence and, on request, along-track incidence)."""
 
     standard_cmap = np.array([
                      [0.12156862745098039, 0.4666666666666667, 0.7058823529411765],
@@ -169,6 +179,8 @@ class TrackAndROIReturnsPlotOnDEM(TrackPlotOnDEM):
             self._NO_ROIS = True
 
     def plot(self) -> None:
+        """Draws the DEM portion covering all ROIs, the ground-track points within it, and one scatter plot per ROI: plain points, or alpha-scaled by incidence angle with per-ROI legend patches, or color/alpha-coded by the along-track incidence angle."""
+
         if self._NO_ROIS:
             print("ERROR: no ROIs to plot.")
         else:

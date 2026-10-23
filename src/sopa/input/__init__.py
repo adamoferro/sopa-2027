@@ -18,3 +18,7 @@
 #   The use of SOPA or part of it for the creation of any sub-product
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
+
+"""Input readers for radar-sounder datasets: the instrument and dataset base
+classes and the format-specific readers (see sopa.input.sharad).
+"""

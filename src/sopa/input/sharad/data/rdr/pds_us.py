@@ -21,6 +21,11 @@
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
 
+"""Reader for SHARAD RDR products produced by the US SHARAD team: a
+real-valued focused radargram (_rgram.img, 3600 samples per frame) plus a
+matching geometric table (_geom.tab).
+"""
+
 from sopa.input.data_base import RSData
 from sopa.input.sharad.data.rdr import pds_us_log as log_messages
 from sopa.geometry.coordinate_converter import CoordinateConverter
@@ -33,6 +38,8 @@ from typing import Any
 
 
 class RDR(RSData):
+    """PDS US RDR dataset: reads the geometric table and the focused radargram; no label file is required and the frame number is taken from the geometric table."""
+
     def __init__(self, dataset_name: str = "no name", pri: float = 0, presumming: int = 0, filename_base: str = "", use_gzip_and_iso8859_1: bool = False, logger: Any = None) -> None:
         super().__init__(dataset_name, pri, presumming, filename_base, use_gzip_and_iso8859_1, logger)
 
@@ -87,6 +94,7 @@ class RDR(RSData):
 
     def _read_rdr_data_geom_file(self) -> npt.NDArray | None:
         def parsetime(v: str) -> np.datetime64:
+            """Converts a text timestamp to numpy.datetime64."""
             return np.datetime64(v)
 
         try:
@@ -110,7 +118,7 @@ class RDR(RSData):
         return None
 
     def _load_rdr_data(self, start_frame: int = 0, end_frame: int = -1) -> bool | None:
-        '''
+        """
         Read PDS US RDR data (filenames in the form s_xxxxxxxx_rgram.img)
         - start_frame and end_frame can be in the range [0, OBS_NUMBER_OF_FRAMES-1]
             (Python array indexing convention)
@@ -118,7 +126,7 @@ class RDR(RSData):
         - if end_frame is greater than the available number of frames, only the
             available data are returned without any error or warning
         - if an error occurs, the function returns False
-        '''
+        """
         N_SAMPLES = 3600
         frame_count = -1
         if start_frame < 0 or (end_frame != -1 and start_frame > end_frame):
@@ -138,13 +146,13 @@ class RDR(RSData):
         return False
 
     def generate_orbit_data(self, skip: int = 1) -> None:
-        '''
+        """
         Saves in self._orbit_data the following fields as a dictionary:
         "time_offset_s", "rxwin_time_s", "Lat", "Lon", "Radius", "Vtang", "Vradial", "X", "Y", "Z", "SZA"
         There is no need for interpolation, as geometric data are already matched 1:1 with RDR data.
         The field rxwin_time_s is arbitrarily set to 0, as it is not given in the data.
         Values of X, Y and Z are calculated, as they are not present in the data either.
-        '''
+        """
         print("WARNING: orbit data obtained from RDR PDS US data may be not sufficiently precise for simulation and/or focusing.")
         geom_fields_to_include = ["Lat", "Lon", "Radius", "Vtang", "Vradial", "SZA"]
         if self._ancillary_already_read:

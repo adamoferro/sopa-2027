@@ -18,3 +18,7 @@
 #   The use of SOPA or part of it for the creation of any sub-product
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
+
+"""Geometric conversions for orbit and surface data: planetocentric
+lat/lon, cartesian and UTM coordinates, and reference-ellipsoid radii.
+"""

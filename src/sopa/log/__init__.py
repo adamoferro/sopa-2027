@@ -18,3 +18,7 @@
 #   The use of SOPA or part of it for the creation of any sub-product
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
+
+"""Simple message-collecting loggers shared along the processing chain; a
+no-op fake_logger serves as the default when no logger is supplied.
+"""

@@ -21,6 +21,12 @@
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
 
+"""8-bit grayscale PNG export of radargrams: complex input is converted to
+power, a noise level is estimated from the first non-zero samples of each
+column, and the dynamic range is stretched either around the noise floor in
+dB (real data) or between percentiles (simulated data, no noise).
+"""
+
 import sys
 import png
 import numpy as np
@@ -37,6 +43,7 @@ PERC_MIN_THR = 70
 PERC_MAX_THR = 99.8
 
 def write(filename: str, np_array: npt.NDArray, sim_data: bool = False) -> bool:
+    """Writes the array as an 8-bit grayscale PNG after the power conversion and dynamic-range stretching described at module level; `sim_data=True` selects the percentile-based limits instead of the dB ones."""
     if (np_array.dtype.name == "complex64" or np_array.dtype.name == "complex128"):
         np_array_tmp = np.abs(np_array).astype("float64")**2.
     else:

@@ -21,12 +21,20 @@
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
 
+"""Coordinate and ellipsoid conversions for orbit and surface data:
+cartesian <-> planetocentric lat/lon, local ellipsoid radii, UTM
+projections (USGS Bulletin 1532 equations) and frame subsampling by ground
+distance.
+"""
+
 import numpy as np
 import numpy.typing as npt
 import math
 
 
 class CoordinateConverter():
+    """Conversions parameterized by a reference ellipsoid (equatorial radius, polar radius, mean radius); instances exist for specific bodies (e.g. MARS_IAU2000), while the static and class methods are body-independent."""
+
     _deg2rad = math.pi / 180.0
     _rad2deg = 180.0 / math.pi
 
@@ -39,14 +47,17 @@ class CoordinateConverter():
 
     @staticmethod
     def euclidean_distance_cart(x1: npt.ArrayLike, y1: npt.ArrayLike, z1: npt.ArrayLike, x2: npt.ArrayLike, y2: npt.ArrayLike, z2: npt.ArrayLike) -> npt.NDArray[np.float64]:
+        """Euclidean distance between two sets of cartesian points."""
         return np.sqrt((x1-x2)**2+(y1-y2)**2+(z1-z2)**2)
 
     @staticmethod
     def to_radius_from_xyz(xcart: npt.ArrayLike, ycart: npt.ArrayLike, zcart: npt.ArrayLike) -> npt.NDArray[np.float64]:
+        """Norm (distance from the origin) of cartesian vectors."""
         return np.sqrt(xcart * xcart + ycart * ycart + zcart * zcart)
 
     @classmethod
     def to_xyz_from_latlon_and_radius(cls, latitude: npt.ArrayLike, longitude: npt.ArrayLike, radius: npt.ArrayLike) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+        """Converts planetocentric lat/lon (degrees) and radius to cartesian coordinates."""
         latitude = (90. - latitude) * cls._deg2rad
         longitude_w = (longitude - 180.) * cls._deg2rad
         xcart = -radius * np.cos(longitude_w) * np.sin(latitude)
@@ -56,12 +67,14 @@ class CoordinateConverter():
 
     @classmethod
     def add_radius_offset_to_orbit(cls, orbit_data: dict[str, npt.NDArray[np.float64] | float], offset_array: npt.NDArray[np.float64]) -> dict[str, npt.NDArray[np.float64] | float]:
+        """Returns a copy of an orbit-data dictionary with all radii increased by the given per-frame offset array, recomputing X/Y/Z accordingly."""
         new_orbit_data = orbit_data.copy()
         new_orbit_data["Radius"] = orbit_data["Radius"] + offset_array
         new_orbit_data["X"], new_orbit_data["Y"], new_orbit_data["Z"] = cls.to_xyz_from_latlon_and_radius(orbit_data["Lat"], orbit_data["Lon"], new_orbit_data["Radius"])
         return new_orbit_data
 
     def to_latlon_area_from_circle_area(self, lat: float, lon: float, radius: float) -> tuple[float, float, float, float] | None:
+        """Bounding lat/lon box of the circle of the given radius centered at the given lat/lon on the mean-radius sphere; returns None when the radius reaches half the sphere."""
         lat_n = 0
         lat_s = 0
         lon_e = 0
@@ -92,12 +105,12 @@ class CoordinateConverter():
         return lat_n, lat_s, lon_e, lon_w
 
     def get_frame_ids_from_skip_distance(self, lat: npt.NDArray[np.float64], lon: npt.NDArray[np.float64], skip_distance: float) -> tuple[npt.NDArray[np.int64], float, float]:
-        '''
+        """
         Find the frame ids of frames approximately equally separated by
         skip_distance meters. The distance is calculated as the euclidean
         distance between points on the ellipsoid, assuming that the points
         are sufficiently close to avoid arc calculations.
-        '''
+        """
 
         x, y, z = self.get_ellipsoid_xyz_from_latlon(lat, lon)
         distances = self.euclidean_distance_cart(x[1:], y[1:], z[1:], x[:-1], y[:-1], z[:-1])
@@ -121,11 +134,13 @@ class CoordinateConverter():
         return i, min_n_frames_per_interval, max_n_frames_per_interval
 
     def get_ellipsoid_radius_from_latlon(self, latitude: npt.ArrayLike, longitude: npt.ArrayLike) -> npt.NDArray[np.float64]:
+        """Local ellipsoid radius at the given planetocentric latitudes (degrees)."""
         latitude = latitude * math.pi / 180.
         ellipsoid_local_radius = np.sqrt(self._ELLIPSOID_EQUATOR_RADIUS**2 / (1 + (1. / ((1 - self._FLATTENING)**2) - 1)*(np.sin(latitude)**2)))
         return ellipsoid_local_radius
 
     def get_ellipsoid_xyz_from_latlon(self, latitude: npt.ArrayLike, longitude: npt.ArrayLike) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+        """Cartesian coordinates of the points at the given lat/lon (degrees) on the reference ellipsoid."""
         radius = self.get_ellipsoid_radius_from_latlon(latitude, longitude)
         # latitude = latitude * math.pi / 180.
         # longitude_w = (longitude - 180.) * math.pi / 180.
@@ -257,6 +272,7 @@ class CoordinateConverter():
         return (UTMNorthing, UTMEasting, UTMZone, ZoneNumber)
 
     def LL_to_UTM_with_given_zone_number(self, LatInput: npt.NDArray[np.float64] | float, LongInput: npt.NDArray[np.float64] | float, ZoneNumber: npt.NDArray[np.int64] | int) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+        """Same projection as `LL_to_UTM`, but computed in the UTM zone supplied by the caller (used to keep neighboring points in a common zone)."""
 
         # same as LLtoUTM, but the zone is given by the user
         if len(LatInput.shape)==0:
@@ -456,5 +472,7 @@ class CoordinateConverter():
 
 
 class MARS_IAU2000(CoordinateConverter):
+    """Coordinate converter for the IAU 2000 Mars ellipsoid (equatorial radius 3396190 m, polar radius 3376200 m, mean radius 3389500 m)."""
+
     def __init__(self) -> None:
         super().__init__("Mars (IAU2000)", 3396190., 3376200., 3389500.)

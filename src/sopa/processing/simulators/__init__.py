@@ -18,3 +18,7 @@
 #   The use of SOPA or part of it for the creation of any sub-product
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
+
+"""Surface-clutter simulators: they generate synthetic radargrams of the
+surface return expected from a DEM along the spacecraft track.
+"""
