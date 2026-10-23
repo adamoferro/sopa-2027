@@ -50,6 +50,18 @@ dependencies = [
 [project.optional-dependencies]
 # interactive plotting backend (matplotlib Qt backend); not imported by the package itself
 qt = ["PyQt6==6.11.0"]
+# test framework (pytest); not imported by the package itself
+test = ["pytest==9.1.1"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+minversion = "9.0"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+pythonpath = ["src"]
+markers = [
+    "realdata: requires /mnt/SOPA/DATA (PDS EDR + MOLA128); deselect with -m 'not realdata'",
+    "slow: long-running test (minutes)",
+]

@@ -17,3 +17,8 @@ python-dateutil==2.9.0.post0
 scipy==1.18.1
 six==1.17.0
 tibs==2.0.2
+# test framework (pytest) and its transitive dependencies — not runtime dependencies
+iniconfig==2.3.1
+pluggy==1.7.0
+pygments==2.21.0
+pytest==9.1.1
