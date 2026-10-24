@@ -138,6 +138,18 @@ def test_constructor_weighting_windows(stub_data: _StubRawData) -> None:
     np.testing.assert_allclose(f._azimuth_weighting_window_original, np.kaiser(2 * N_HALF_APERTURE + 1, 1.5))
 
 
+def test_constructor_weighting_windows_none(stub_data: _StubRawData) -> None:
+    """Checks the weighting-window fallbacks for the "none" functions: an
+    all-ones float64 range window over half the range FFT length and the
+    scalar azimuth window that focus() broadcasts over the output samples."""
+    pars = FocuserParameters(frame_start=0, frame_end=1, frame_half_aperture=N_HALF_APERTURE,
+                             range_weighting_function="none", azimuth_weighting_function="none")
+    f = SOFA(SHARAD(), MARS_IAU2000(), np.full(N_FRAMES, 3396000, dtype="int32"), stub_data, pars)
+    np.testing.assert_array_equal(f._range_weighting_window_original, np.ones(2048))
+    assert f._range_weighting_window_original.dtype == np.float64
+    assert f._azimuth_weighting_window_original == 1.
+
+
 def test_focus_rejects_end_after_data(stub_data: _StubRawData, capsys: pytest.CaptureFixture[str]) -> None:
     """Checks that an end frame at or after the input length stops the focus
     before any processing."""
@@ -161,6 +173,22 @@ def test_focus_tiny_run(stub_data: _StubRawData) -> None:
     focused frame (arange(3, 10) = 7), all values finite and non-negative,
     and positive total power."""
     pars = FocuserParameters(frame_start=3, frame_end=10, frame_half_aperture=N_HALF_APERTURE, squint_angle=0)
+    f = SOFA(SHARAD(), MARS_IAU2000(), np.full(N_FRAMES, 3396000, dtype="int32"), stub_data, pars, n_processes=1)
+    output = f.focus()
+    assert output is not None
+    assert output.shape == (667 * 2, 7)
+    assert np.all(np.isfinite(output))
+    assert np.all(output >= 0)
+    assert np.sum(output) > 0
+
+
+def test_focus_tiny_run_unweighted(stub_data: _StubRawData) -> None:
+    """Checks the same focus run as test_focus_tiny_run with both weighting
+    functions set to "none": the run completes, one output column per focused
+    frame (arange(3, 10) = 7), all values finite and non-negative, and
+    positive total power."""
+    pars = FocuserParameters(frame_start=3, frame_end=10, frame_half_aperture=N_HALF_APERTURE, squint_angle=0,
+                             range_weighting_function="none", azimuth_weighting_function="none")
     f = SOFA(SHARAD(), MARS_IAU2000(), np.full(N_FRAMES, 3396000, dtype="int32"), stub_data, pars, n_processes=1)
     output = f.focus()
     assert output is not None

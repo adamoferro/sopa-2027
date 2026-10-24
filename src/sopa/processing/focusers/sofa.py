@@ -161,7 +161,7 @@ class SOFA(object):
             if debug_mode:
                 print("NO Gaussian filtering.")
 
-        self._range_weighting_window_original = 1.
+        self._range_weighting_window_original = np.ones(int(self._SIZE_RANGE_FFT/2.))
         rwfs = param_obj.range_weighting_function
         if rwfs != "none":
             if rwfs == "kaiser":
@@ -169,7 +169,7 @@ class SOFA(object):
             else:
                 self._range_weighting_window_original = eval("np." + rwfs + "(self._SIZE_RANGE_FFT/2.)")
 
-        self._azimuth_weighting_windows = 1.
+        self._azimuth_weighting_window_original = 1.
         awfs = param_obj.azimuth_weighting_function
         if awfs != "none":
             if awfs == "kaiser":
