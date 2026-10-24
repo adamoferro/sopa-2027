@@ -27,12 +27,12 @@ dynamic range selection.
 """
 
 import matplotlib
-from matplotlib import pyplot as pp
 import numpy as np
 import numpy.typing as npt
+from matplotlib import pyplot as pp
 
 
-class _BaseRadargramPlot(object):
+class _BaseRadargramPlot:
     """Common implementation of the radargram plots: prepares the image (optional dB conversion), the display limits (fixed, from the data, or from the histogram of the central 0.5-99.5% of the values) and the vertical crop."""
 
     def __init__(self, image: npt.NDArray[np.float64], db_output: bool = False, min_value: float = -1, max_value: float = -1, method: str | None = None, top_point: int = 0, bottom_point: int = -1, title: str = "") -> None:

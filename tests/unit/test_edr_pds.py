@@ -29,7 +29,6 @@ decoding and the rejection paths.
 """
 
 from pathlib import Path
-from typing import Any
 
 import bitstring as bstr
 import numpy as np

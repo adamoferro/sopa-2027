@@ -30,13 +30,15 @@ per-frame range shift and the orbit/geometric ancillary fields.
 # TODO:
 #
 
-from sopa.input.data_base import RSData
-from sopa.input.sharad.data.rdr import pds_log as log_messages
-from sopa.geometry.coordinate_converter import CoordinateConverter
 from pathlib import Path
+from typing import Any
+
 import numpy as np
 import numpy.typing as npt
-from typing import Any
+
+from sopa.geometry.coordinate_converter import CoordinateConverter
+from sopa.input.data_base import RSData
+from sopa.input.sharad.data.rdr import pds_log as log_messages
 
 
 class RDR(RSData):
@@ -141,7 +143,7 @@ class RDR(RSData):
                     self.logger.log_messages(log_messages.ERR_MESSAGES["header_file_generic"])
                 else:
                     return header_data, error_field
-        except IOError:
+        except OSError:
             self.logger.log_messages(log_messages.ERR_MESSAGES["header_file_read"])
         except UnicodeDecodeError:
             self.logger.log_messages(log_messages.ERR_MESSAGES["header_file_decode"])
@@ -249,7 +251,7 @@ class RDR(RSData):
                 self._data = self._correct_range_shift(raw_data, raw_data_np["RANGE_SHIFT"])
                 self._data_already_read = True
                 return True
-        except IOError:
+        except OSError:
             self.logger.log_messages(log_messages.ERR_MESSAGES["data_read"])
         return False
 

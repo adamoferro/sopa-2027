@@ -28,11 +28,9 @@ peak placement, facet-weighted energy, first-return bookkeeping and the
 uncertainty mask.
 """
 
-from typing import Any
 
 import numpy as np
 import numpy.typing as npt
-import pytest
 
 from sopa.dem.mola.mola import MOLA128
 from sopa.geometry.coordinate_converter import MARS_IAU2000

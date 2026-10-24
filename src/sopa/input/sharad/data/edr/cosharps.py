@@ -31,16 +31,18 @@ more orbit files and one 8-bit science data file per acquisition mode.
 # - handle data where more "Mode"s are present
 # - modify print with logger
 
-from sopa.input.data_base import RSData
-from sopa.input.sharad.data.edr import cosharps_log as log_messages
-from pathlib import Path
+import datetime
 import glob
+from pathlib import Path
+from typing import Any
+
 import numpy as np
 import numpy.typing as npt
-import datetime
 from scipy import ndimage as nd
 from scipy.interpolate import interp1d
-from typing import Any
+
+from sopa.input.data_base import RSData
+from sopa.input.sharad.data.edr import cosharps_log as log_messages
 
 
 class EDR(RSData):
@@ -222,7 +224,7 @@ class EDR(RSData):
                     self.logger.log_messages(log_messages.ERR_MESSAGES["header_file_generic"])
                 else:
                     return header_data, error_field
-        except IOError:
+        except OSError:
             self.logger.log_messages(log_messages.ERR_MESSAGES["header_file_read"])
         except UnicodeDecodeError:
             self.logger.log_messages(log_messages.ERR_MESSAGES["header_file_decode"])
@@ -240,7 +242,7 @@ class EDR(RSData):
             )
             aux_data = aux_data[["time_offset_s", "rxwin_time_us"]]
             return aux_data
-        except IOError:
+        except OSError:
             self.logger.log_messages(log_messages.ERR_MESSAGES["aux_file_read"])
         return None
 
@@ -262,7 +264,7 @@ class EDR(RSData):
                     converters={0: parsetime},
                 )
                 return geom_data
-        except IOError:
+        except OSError:
             self.logger.log_messages(log_messages.ERR_MESSAGES["orbit_file_read"])
         except UnicodeDecodeError:
             self.logger.log_messages(log_messages.ERR_MESSAGES["orbit_file_decode"])
@@ -270,9 +272,9 @@ class EDR(RSData):
 
     def _read_raw_data_hk_file(self) -> dict[str, npt.NDArray[np.float64]] | None:
         """Parses the housekeeping telemetry lines (hex-encoded engineering data of the subsurface sounding mode) into timestamped temperatures, voltages and transmitter levels."""
-        date_time_ref_obj = datetime.datetime.fromtimestamp(315532800, tz=datetime.timezone.utc)
+        date_time_ref_obj = datetime.datetime.fromtimestamp(315532800, tz=datetime.UTC)
         try:
-            with open(self._HK_FILENAME, 'rt') as fp:
+            with open(self._HK_FILENAME) as fp:
                 lines_all = fp.readlines()
                 lines = [line for line in lines_all if "ENG:7EE5" in line]      # engineering data label + telemetry start (7E) + engineering ID (E) + subsurface sounding mode (5)
                 n_lines = len(lines)
@@ -290,7 +292,7 @@ class EDR(RSData):
                     hk_data["tx_lev"][i_line] = int(line[44:46], 16)
                     hk_data["tx_curr"][i_line] = int(line[46:48], 16)
                 return hk_data
-        except IOError:
+        except OSError:
             self.logger.log_messages(log_messages.ERR_MESSAGES["hk-data_read"])
         return None
 
@@ -319,7 +321,7 @@ class EDR(RSData):
                 raw_data = np.fromfile(fp, dtype=np.int8, count=frame_count*N_SAMPLES).reshape((-1, 3600)).T.astype("float64")
                 self._data = raw_data
                 return True
-        except IOError:
+        except OSError:
             self.logger.log_messages(log_messages.ERR_MESSAGES["data_read"])
         self._data_already_read = True
         return False

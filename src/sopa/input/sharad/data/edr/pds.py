@@ -34,14 +34,16 @@ unpacked and statically decompressed on loading.
 # - handle dynamic compression
 # - add skip to _load_raw_data
 
-from sopa.input.data_base import RSData
-from sopa.input.sharad.data.edr import pds_log as log_messages
-from sopa.geometry.coordinate_converter import CoordinateConverter
 from pathlib import Path
+from typing import Any
+
+import bitstring as bs
 import numpy as np
 import numpy.typing as npt
-import bitstring as bs
-from typing import Any
+
+from sopa.geometry.coordinate_converter import CoordinateConverter
+from sopa.input.data_base import RSData
+from sopa.input.sharad.data.edr import pds_log as log_messages
 
 
 class EDR(RSData):
@@ -219,7 +221,7 @@ class EDR(RSData):
                     self.logger.log_messages(log_messages.ERR_MESSAGES["header_file_generic"])
                 else:
                     return header_data, error_field
-        except IOError:
+        except OSError:
             self.logger.log_messages(log_messages.ERR_MESSAGES["header_file_read"])
         except UnicodeDecodeError:
             self.logger.log_messages(log_messages.ERR_MESSAGES["header_file_decode"])
@@ -269,7 +271,7 @@ class EDR(RSData):
                 aux_file = fp.read()
                 geom_data = np.frombuffer(aux_file, dtype=dt, count=self.n_frames)
                 return geom_data
-        except IOError:
+        except OSError:
             self.logger.log_messages(log_messages.ERR_MESSAGES["orbit_file_read"])
         except UnicodeDecodeError:
             self.logger.log_messages(log_messages.ERR_MESSAGES["orbit_file_decode"])
@@ -319,7 +321,7 @@ class EDR(RSData):
                 self._rxwin_steps = raw_data_np["RECEIVE_WINDOW_OPENING_TIME"]
                 self._data_already_read = True
                 return True
-        except IOError:
+        except OSError:
             self.logger.log_messages(log_messages.ERR_MESSAGES["data_read"])
         return False
 

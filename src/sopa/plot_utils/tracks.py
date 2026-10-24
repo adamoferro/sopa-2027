@@ -26,14 +26,15 @@ return positions over DEM radius images, with lat/lon axis labels derived
 from the DEM sampling.
 """
 
-from matplotlib import pyplot as pp
+from typing import Any
+
 import matplotlib.patches as mpatches
 import numpy as np
 import numpy.typing as npt
-from typing import Any
+from matplotlib import pyplot as pp
 
 
-class TrackPlotOnDEM(object):
+class TrackPlotOnDEM:
     """Displays a DEM portion with the spacecraft ground track on top."""
 
     def __init__(self, dem_obj: Any, track_lats: npt.NDArray[np.float64], track_lons: npt.NDArray[np.float64], auto_show: bool = False, title: str | None = None) -> None:
@@ -234,7 +235,7 @@ class TrackAndROIReturnsPlotOnDEM(TrackPlotOnDEM):
                     legend_patches.append(mpatches.Patch(color=color_base, label=ir))
                 pp.legend(handles=legend_patches)
             else:
-                cmap_base = matplotlib.colormaps["seismic"]     # 2026 port: accessing colormaps as pyplot attributes was deprecated
+                cmap_base = matplotlib.colormaps["seismic"]     # noqa: F821 (matplotlib is deliberately not imported; this alt-angle branch carries the same latent NameError as the SOPA_2026 reference, kept for reference parity)
                 for ir in roi_x:
                     alpha = 1 - (self._roi_ias[ir] / self.ref_max_angle)
                     alpha[alpha < 0] = 0

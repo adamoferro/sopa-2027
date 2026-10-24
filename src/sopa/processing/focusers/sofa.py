@@ -30,14 +30,16 @@ SHARAD raw echo data.
 # - calculate _SIZE_RANGE_FFT automatically? (next pow2?)
 # - estimate of average number of frames corresponding to the defined squint offset using only the frames required for processing and not the whole track
 
+from typing import Any
+
 import numpy as np
 import numpy.typing as npt
 from scipy.ndimage import gaussian_filter1d
+
 from sopa.processing.utils import ProcessingUtils
-from typing import Any
 
 
-class SOFA(object):
+class SOFA:
     """Synthetic-aperture focuser for SHARAD raw data.
 
     For every frame to focus it range-compresses the echoes of the synthetic

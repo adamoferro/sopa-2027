@@ -28,10 +28,11 @@ interpolated, upscaled sub-DEM extraction.
 
 # TODO add limit checks
 
-from sopa.dem.dem_base import DEMBase
 import numpy as np
 import numpy.typing as npt
 import scipy.ndimage as snd
+
+from sopa.dem.dem_base import DEMBase
 from sopa.io_utils import envi
 
 
@@ -74,7 +75,7 @@ class MOLA(DEMBase):
                 self.dem = envi.read(self.filename_base)
                 self._set_info()
                 return True
-            except IOError:
+            except OSError:
                 print("ERROR: cannot read MOLA128 DEM file.")
         else:
             print("ERROR: header filename not set.")

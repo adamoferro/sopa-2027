@@ -28,13 +28,15 @@ handling and read-only access to the echo matrix.
 # TODO:
 # - modify print with logger
 
-from sopa.log.log import fake_logger
 import gzip
-import numpy.typing as npt
 from typing import Any
 
+import numpy.typing as npt
 
-class RSData():
+from sopa.log.log import fake_logger
+
+
+class RSData:
     """Base class of the dataset readers.
 
     It stores the dataset metadata (name, number of frames, PRI, presumming

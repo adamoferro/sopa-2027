@@ -30,7 +30,6 @@ handling.
 from pathlib import Path
 
 import numpy as np
-import numpy.typing as npt
 import pytest
 
 from sopa.io_utils import envi

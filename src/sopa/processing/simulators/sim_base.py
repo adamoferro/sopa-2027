@@ -26,13 +26,15 @@ alignment of the track, and dispatch of the per-frame computation to the
 format-specific simulation callback.
 """
 
-import numpy as np
-import numpy.typing as npt
-from sopa.processing.utils import ProcessingUtils
 from typing import Any
 
+import numpy as np
+import numpy.typing as npt
 
-class _SIMBase(object):
+from sopa.processing.utils import ProcessingUtils
+
+
+class _SIMBase:
     """Shared implementation of the clutter simulators.
 
     It selects the frames to simulate (skip in frames or meters), aligns the

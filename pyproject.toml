@@ -52,6 +52,8 @@ dependencies = [
 qt = ["PyQt6==6.11.0"]
 # test framework (pytest); not imported by the package itself
 test = ["pytest==9.1.1"]
+# linter (ruff); not imported by the package itself
+lint = ["ruff==0.17.2"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -65,3 +67,15 @@ markers = [
     "realdata: requires /mnt/SOPA/DATA (PDS EDR + MOLA128); deselect with -m 'not realdata'",
     "slow: long-running test (minutes)",
 ]
+
+[tool.ruff]
+target-version = "py314"
+
+[tool.ruff.lint]
+# default rule set (E4/E7/E9/F) plus isort (I), pycodestyle warnings (W) and pyupgrade (UP)
+select = ["E4", "E7", "E9", "F", "I", "W", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# the example program's sys.path.insert shim (making the src tree importable)
+# must precede the sopa imports, so E402 (module level import not at top of file) is expected there
+"run_sopa_processing_2610.py" = ["E402"]

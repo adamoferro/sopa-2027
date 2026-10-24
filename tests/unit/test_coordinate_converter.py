@@ -34,7 +34,7 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 
-from sopa.geometry.coordinate_converter import CoordinateConverter, MARS_IAU2000
+from sopa.geometry.coordinate_converter import MARS_IAU2000, CoordinateConverter
 
 
 @pytest.fixture()

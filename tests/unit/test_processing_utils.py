@@ -28,7 +28,6 @@ matched-filter property that the compressed chirp peaks at zero lag.
 """
 
 import numpy as np
-import pytest
 from scipy.signal import chirp
 
 from sopa.processing.utils import ProcessingUtils

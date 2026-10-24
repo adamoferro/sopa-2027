@@ -28,9 +28,10 @@ dB (real data) or between percentiles (simulated data, no noise).
 """
 
 import sys
-import png
+
 import numpy as np
 import numpy.typing as npt
+import png
 
 TOP_NOISE_SAMPLES = 100
 
@@ -86,7 +87,7 @@ def write(filename: str, np_array: npt.NDArray, sim_data: bool = False) -> bool:
 
     try:
         png.from_array(np_array_tmp.copy(), 'L').save(filename)     # .copy() needed to avoid a pypng "bug" with some numpy ndarrays
-    except:
+    except BaseException:
         print("ERROR: problem writing image to disk.")
         return False
     return True

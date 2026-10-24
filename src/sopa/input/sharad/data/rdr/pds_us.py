@@ -26,13 +26,15 @@ real-valued focused radargram (_rgram.img, 3600 samples per frame) plus a
 matching geometric table (_geom.tab).
 """
 
-from sopa.input.data_base import RSData
-from sopa.input.sharad.data.rdr import pds_us_log as log_messages
-from sopa.geometry.coordinate_converter import CoordinateConverter
 from pathlib import Path
+from typing import Any
+
 import numpy as np
 import numpy.typing as npt
-from typing import Any
+
+from sopa.geometry.coordinate_converter import CoordinateConverter
+from sopa.input.data_base import RSData
+from sopa.input.sharad.data.rdr import pds_us_log as log_messages
 
 # TODO use more the logger
 
@@ -111,7 +113,7 @@ class RDR(RSData):
                 )
                 self.n_frames = geom_data.shape[0]
                 return geom_data
-        except IOError:
+        except OSError:
             self.logger.log_messages(log_messages.ERR_MESSAGES["orbit_file_read"])
         except UnicodeDecodeError:
             self.logger.log_messages(log_messages.ERR_MESSAGES["orbit_file_decode"])
@@ -140,7 +142,7 @@ class RDR(RSData):
                 rdr_data = np.fromfile(fp, dtype=np.float32, count=frame_count*N_SAMPLES).reshape((3600, -1)).astype("float64")
                 self._data = rdr_data
                 return True
-        except IOError:
+        except OSError:
             self.logger.log_messages(log_messages.ERR_MESSAGES["data_read"])
 
         return False

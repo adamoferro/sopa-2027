@@ -29,7 +29,7 @@ import numpy.typing as npt
 from scipy.signal import chirp
 
 
-class ProcessingUtils():
+class ProcessingUtils:
     """Container of static helpers for the range compression of the echo data."""
     def __init__(self) -> None:
         pass

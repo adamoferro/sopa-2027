@@ -27,7 +27,6 @@ synthetic image, with the histogram-based, fixed-limit and not-a-number-aware
 dynamic-range variants. Pixel content is not verified.
 """
 
-from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np

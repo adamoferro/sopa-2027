@@ -27,18 +27,20 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
 
 import numpy as np
-from sopa.log.log import logger
-from sopa.input.sharad.instrument import SHARAD
-from sopa.input.sharad.data.edr.pds import EDR as EDR_PDS
-from sopa.geometry.coordinate_converter import MARS_IAU2000
+
 from sopa.dem.mola.mola import MOLA128
-from sopa.processing.parameters import FocuserParameters
-from sopa.processing.simulators.sfrssim import sfRSsim
+from sopa.geometry.coordinate_converter import MARS_IAU2000
+from sopa.input.sharad.data.edr.pds import EDR as EDR_PDS
+from sopa.input.sharad.instrument import SHARAD
+from sopa.io_utils import envi
+from sopa.log.log import logger
+from sopa.plot_utils.radargrams import GroundDistancePlot, RadargramPlot, SimulationPlot
+from sopa.plot_utils.tracks import TrackAndFirstReturnsPlotOnDEM, TrackPlotOnDEM
+
 # from processing.simulators.drssim import dRSsim         # uncomment if needed
 from sopa.processing.focusers.sofa import SOFA
-from sopa.io_utils import envi
-from sopa.plot_utils.tracks import TrackPlotOnDEM, TrackAndFirstReturnsPlotOnDEM
-from sopa.plot_utils.radargrams import SimulationPlot, GroundDistancePlot, RadargramPlot
+from sopa.processing.parameters import FocuserParameters
+from sopa.processing.simulators.sfrssim import sfRSsim
 
 
 def main(argv=None):

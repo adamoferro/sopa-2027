@@ -27,7 +27,7 @@
 import numpy.typing as npt
 
 
-class DEMBase():
+class DEMBase:
     """Stores the DEM name, base filename and dummy value (used to mark points outside the DEM coverage), and defines the interface implemented by the specific DEM formats: `read`, `get_dem_radius_from_lat_lon` and `reset`. The pixel sampling in degrees and the radius offset to be added to the stored values are set by the subclasses."""
 
     def __init__(self, dem_name: str = "no name", filename_base: str = "", dummy_value: int = 0) -> None:

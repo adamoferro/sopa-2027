@@ -31,7 +31,7 @@ processing chain.
 # - add Doppler max search and adjacent Doppler windows (as in SOFA "original")
 
 
-class _BaseProcessingParameters():
+class _BaseProcessingParameters:
     """Common frame-range, aperture and range-weighting parameters. `frame_start` is clamped to `frame_half_aperture`; when `meters_skip` is given it takes priority over `frame_skip` (frame selection by equal ground distance instead of a fixed frame count)."""
 
     def __init__(self, frame_start: int = 0, frame_end: int = -1, frame_skip: int = 1, meters_skip: float | None = None, frame_half_aperture: int = 768, squint_angle: float = 0, range_weighting_function: str = "hanning", range_weighting_kaiser_beta: float = 2) -> None:

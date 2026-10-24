@@ -37,23 +37,23 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import bitstring as bstr
 import numpy as np
 import numpy.typing as npt
-import bitstring as bstr
 import pytest
 
-from sopa.input.sharad.instrument import SHARAD
-from sopa.input.sharad.data.edr.pds import EDR as EDR_PDS
-from sopa.geometry.coordinate_converter import MARS_IAU2000
 from sopa.dem.mola.mola import MOLA128
+from sopa.geometry.coordinate_converter import MARS_IAU2000
+from sopa.input.sharad.data.edr.pds import EDR as EDR_PDS
+from sopa.input.sharad.instrument import SHARAD
+from sopa.io_utils import envi
+from sopa.io_utils import png as png_io
+from sopa.log.log import logger
+from sopa.plot_utils.radargrams import GroundDistancePlot, RadargramPlot, SimulationPlot
+from sopa.plot_utils.tracks import TrackAndFirstReturnsPlotOnDEM, TrackPlotOnDEM
+from sopa.processing.focusers.sofa import SOFA
 from sopa.processing.parameters import FocuserParameters, SimulatorParameters
 from sopa.processing.simulators.sfrssim import sfRSsim
-from sopa.processing.focusers.sofa import SOFA
-from sopa.io_utils import envi, png as png_io
-from sopa.log.log import logger
-from sopa.plot_utils.tracks import TrackPlotOnDEM, TrackAndFirstReturnsPlotOnDEM
-from sopa.plot_utils.radargrams import SimulationPlot, GroundDistancePlot, RadargramPlot
-
 
 DATASET_NAME = "e_9999999"
 N_FRAMES = 4000
@@ -198,7 +198,7 @@ MRO:COMPRESSION_SELECTION_FLAG = "STATIC"
 DATA_QUALITY_ID                = "0"
 END
 """
-    with open(synth_dir / (DATASET_NAME + "_a.lbl"), "wt") as fp:
+    with open(synth_dir / (DATASET_NAME + "_a.lbl"), "w") as fp:
         fp.write(header_txt)
 
     return SyntheticOrbit(coord_converter=cc, lat=lat, lon=lon)

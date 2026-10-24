@@ -28,7 +28,6 @@ frame-range validation of focus(), and a small end-to-end focus run on a
 tiny synthetic raw dataset.
 """
 
-from typing import Any
 
 import numpy as np
 import numpy.typing as npt

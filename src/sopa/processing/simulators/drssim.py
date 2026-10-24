@@ -26,11 +26,13 @@ grid contributes one count to the range sample corresponding to its
 two-way travel time.
 """
 
-from sopa.processing.simulators.sim_base import _SIMBase
+from typing import Any
+
 import numpy as np
 import numpy.typing as npt
 from scipy.ndimage import gaussian_filter
-from typing import Any
+
+from sopa.processing.simulators.sim_base import _SIMBase
 
 
 class dRSsim(_SIMBase):
@@ -121,7 +123,7 @@ class dRSsim(_SIMBase):
             d_surface = geom_obj.euclidean_distance_cart(sc_x_cart_local, sc_y_cart_local, sc_z_cart_local, x_cart_surface_matrix, y_cart_surface_matrix, z_cart_surface_matrix)
 
             t_surface = 2. * d_surface / _C
-            sample_pos_surface = np.round(((t_surface - rxwin_ref + input_scr_data_shifts_alignment_t[i_frame_tbs]) / dt)).astype("int")        # use rxwin_ref instead of input_rxwin_data_t_local
+            sample_pos_surface = np.round((t_surface - rxwin_ref + input_scr_data_shifts_alignment_t[i_frame_tbs]) / dt).astype("int")        # use rxwin_ref instead of input_rxwin_data_t_local
 
             # set out-of-range sample positions to the farthest position (useful later for detecting the first-return position)
             sample_pos_surface[(sample_pos_surface < 0) | (sample_pos_surface >= sim_n_samples)] = sim_n_samples

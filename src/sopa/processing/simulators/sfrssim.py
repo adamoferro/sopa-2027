@@ -26,12 +26,14 @@ area, weighted by the incidence angle, to the range sample corresponding to
 its two-way travel time.
 """
 
-from sopa.processing.simulators.sim_base import _SIMBase
-from sopa.geometry.coordinate_converter import CoordinateConverter as cc
+from typing import Any
+
 import numpy as np
 import numpy.typing as npt
 from scipy.ndimage import gaussian_filter
-from typing import Any
+
+from sopa.geometry.coordinate_converter import CoordinateConverter as cc
+from sopa.processing.simulators.sim_base import _SIMBase
 
 
 class sfRSsim(_SIMBase):
@@ -219,7 +221,7 @@ class sfRSsim(_SIMBase):
 
                         # time to facet from spacecraft, and conversion to radargram sample (range) position
                         t_surface = 2. * d_surface / _C
-                        sample_pos_surface = np.round(((t_surface - rxwin_ref + input_scr_data_shifts_alignment_t[i_frame_tbs]) / dt)).astype("int")        # use rxwin_ref instead of input_rxwin_data_t_local
+                        sample_pos_surface = np.round((t_surface - rxwin_ref + input_scr_data_shifts_alignment_t[i_frame_tbs]) / dt).astype("int")        # use rxwin_ref instead of input_rxwin_data_t_local
 
                         # set out-of-range sample positions to the farthest position (useful later for detecting the first-return position)
                         sample_pos_surface[(sample_pos_surface < 0) | (sample_pos_surface >= sim_n_samples)] = sim_n_samples

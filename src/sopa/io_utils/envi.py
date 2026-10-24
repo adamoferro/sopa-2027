@@ -33,6 +33,7 @@ header, BSQ interleave, little-endian on write).
 # readable by ENVI, GDAL and QGIS.
 
 from pathlib import Path
+
 import numpy as np
 import numpy.typing as npt
 
@@ -95,7 +96,7 @@ def read(filename: str) -> npt.NDArray | None:
         if bands > 1:
             np_array = np_array[:lines, :]                  # keep only band 1
         return np_array
-    except (IOError, OSError, KeyError, ValueError):
+    except (OSError, KeyError, ValueError):
         print(f"ERROR: cannot read ENVI file {filename}")
         return None
 
@@ -108,7 +109,7 @@ def write(filename: str, np_array: npt.NDArray, complex_output: bool = False) ->
         np_array_tmp = np_array
     try:
         return _write_numpy(filename, np_array_tmp)
-    except:
+    except BaseException:
         print("ERROR: problem writing image to disk.")
         return False
     return True
@@ -117,7 +118,7 @@ def write(filename: str, np_array: npt.NDArray, complex_output: bool = False) ->
 def _read_envi_header(hdr_filename: str) -> dict[str, str]:
     """Parses the "key = value" lines of an .hdr file, skipping multi-line { ... } values."""
     header = dict()
-    with open(hdr_filename, "rt") as fp:
+    with open(hdr_filename) as fp:
         line = fp.readline()
         in_braces = False       # multi-line values such as description = { ... }
         while line:
@@ -143,7 +144,7 @@ def _write_numpy(filename: str, np_array: npt.NDArray) -> bool:
     hdr_filename = filename + ".hdr"
     with open(filename, "wb") as fp:
         np_array.astype(np_array.dtype.newbyteorder("<")).tofile(fp)        # little-endian (native on x86)
-    with open(hdr_filename, "wt") as fp:
+    with open(hdr_filename, "w") as fp:
         fp.write("ENVI\n")
         fp.write(f"samples = {np_array.shape[1]}\n")
         fp.write(f"lines   = {np_array.shape[0]}\n")

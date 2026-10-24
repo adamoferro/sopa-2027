@@ -42,18 +42,17 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 
-from sopa.input.sharad.instrument import SHARAD
-from sopa.input.sharad.data.edr.pds import EDR as EDR_PDS
-from sopa.geometry.coordinate_converter import MARS_IAU2000
 from sopa.dem.mola.mola import MOLA128
-from sopa.processing.parameters import FocuserParameters, SimulatorParameters
-from sopa.processing.simulators.sfrssim import sfRSsim
-from sopa.processing.focusers.sofa import SOFA
+from sopa.geometry.coordinate_converter import MARS_IAU2000
+from sopa.input.sharad.data.edr.pds import EDR as EDR_PDS
+from sopa.input.sharad.instrument import SHARAD
 from sopa.io_utils import envi
 from sopa.log.log import logger
-from sopa.plot_utils.tracks import TrackPlotOnDEM, TrackAndFirstReturnsPlotOnDEM
-from sopa.plot_utils.radargrams import SimulationPlot, GroundDistancePlot, RadargramPlot
-
+from sopa.plot_utils.radargrams import GroundDistancePlot, RadargramPlot, SimulationPlot
+from sopa.plot_utils.tracks import TrackAndFirstReturnsPlotOnDEM, TrackPlotOnDEM
+from sopa.processing.focusers.sofa import SOFA
+from sopa.processing.parameters import FocuserParameters, SimulatorParameters
+from sopa.processing.simulators.sfrssim import sfRSsim
 
 DATA_DIR = Path("/mnt/SOPA/DATA")
 

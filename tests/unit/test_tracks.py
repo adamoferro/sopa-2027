@@ -34,7 +34,11 @@ import numpy.typing as npt
 import pytest
 
 from sopa.dem.mola.mola import MOLA128
-from sopa.plot_utils.tracks import TrackAndFirstReturnsPlotOnDEM, TrackAndROIReturnsPlotOnDEM, TrackPlotOnDEM
+from sopa.plot_utils.tracks import (
+    TrackAndFirstReturnsPlotOnDEM,
+    TrackAndROIReturnsPlotOnDEM,
+    TrackPlotOnDEM,
+)
 
 N_POINTS = 30
 

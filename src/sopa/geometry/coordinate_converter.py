@@ -27,12 +27,13 @@ projections (USGS Bulletin 1532 equations) and frame subsampling by ground
 distance.
 """
 
-import numpy as np
-import numpy.typing as npt
 import math
 
+import numpy as np
+import numpy.typing as npt
 
-class CoordinateConverter():
+
+class CoordinateConverter:
     """Conversions parameterized by a reference ellipsoid (equatorial radius, polar radius, mean radius); instances exist for specific bodies (e.g. MARS_IAU2000), while the static and class methods are body-independent."""
 
     _deg2rad = math.pi / 180.0
@@ -239,7 +240,7 @@ class CoordinateConverter():
         # 	 }
 
         LongOrigin = (ZoneNumber - 1)*6 - 180 + 3  #+3 puts origin in middle of zone
-        LongOriginRad = LongOrigin * self._deg2rad;
+        LongOriginRad = LongOrigin * self._deg2rad
 
         #compute the UTM Zone from the latitude and longitude
         UTMLetters = self.UTMLetterDesignator(Lat)
@@ -254,16 +255,16 @@ class CoordinateConverter():
         A = np.cos(LatRad)*(LongRad-LongOriginRad)
 
         M = a*((1	- eccSquared/4		- 3*eccSquared*eccSquared/64	- 5*eccSquared*eccSquared*eccSquared/256)*LatRad
-    				- (3*eccSquared/8	+ 3*eccSquared*eccSquared/32	+ 45*eccSquared*eccSquared*eccSquared/1024)*np.sin(2*LatRad)
-    									+ (15*eccSquared*eccSquared/256 + 45*eccSquared*eccSquared*eccSquared/1024)*np.sin(4*LatRad)
-    									- (35*eccSquared*eccSquared*eccSquared/3072)*np.sin(6*LatRad))
+                    - (3*eccSquared/8	+ 3*eccSquared*eccSquared/32	+ 45*eccSquared*eccSquared*eccSquared/1024)*np.sin(2*LatRad)
+                                        + (15*eccSquared*eccSquared/256 + 45*eccSquared*eccSquared*eccSquared/1024)*np.sin(4*LatRad)
+                                        - (35*eccSquared*eccSquared*eccSquared/3072)*np.sin(6*LatRad))
 
         UTMEasting = (k0*N*(A+(1-T+C)*A*A*A/6
-    					+ (5-18*T+T*T+72*C-58*eccPrimeSquared)*A*A*A*A*A/120)
-    					+ 500000.0)
+                        + (5-18*T+T*T+72*C-58*eccPrimeSquared)*A*A*A*A*A/120)
+                        + 500000.0)
 
         UTMNorthing = (k0*(M+N*np.tan(LatRad)*(A*A/2+(5-T+9*C+4*C*C)*A*A*A*A/24
-    				 + (61-58*T+T*T+600*C-330*eccPrimeSquared)*A*A*A*A*A*A/720)));
+                     + (61-58*T+T*T+600*C-330*eccPrimeSquared)*A*A*A*A*A*A/720)))
 
         UTMNorthing[Lat < 0] += 10000000.0 #10000000 meter offset for southern hemisphere
     #    if Lat < 0:
@@ -295,7 +296,7 @@ class CoordinateConverter():
         M=0
 
     #Make sure the longitude is between -180.00 .. 179.9
-        LongTemp = (Long+180)-((Long+180)/360).astype("int")*360-180; # -180.00 .. 179.9;
+        LongTemp = (Long+180)-((Long+180)/360).astype("int")*360-180 # -180.00 .. 179.9;
         LongOriginRad=0
         LongOrigin = (ZoneNumber - 1)*6 - 180 + 3  #+3 puts origin in middle of zone
         LongOriginRad = LongOrigin * self._deg2rad
@@ -306,26 +307,26 @@ class CoordinateConverter():
         LongTemp[(LongTemp-LongOrigin)>180]-=360
         LongTemp[(LongTemp-LongOrigin)<-180]+=360
 
-        LongRad = LongTemp*self._deg2rad;
+        LongRad = LongTemp*self._deg2rad
 
-        eccPrimeSquared = (eccSquared)/(1-eccSquared);
+        eccPrimeSquared = (eccSquared)/(1-eccSquared)
 
-        N = a/np.sqrt(1-eccSquared*np.sin(LatRad)*np.sin(LatRad));
-        T = np.tan(LatRad)*np.tan(LatRad);
-        C = eccPrimeSquared*np.cos(LatRad)*np.cos(LatRad);
-        A = np.cos(LatRad)*(LongRad-LongOriginRad);
+        N = a/np.sqrt(1-eccSquared*np.sin(LatRad)*np.sin(LatRad))
+        T = np.tan(LatRad)*np.tan(LatRad)
+        C = eccPrimeSquared*np.cos(LatRad)*np.cos(LatRad)
+        A = np.cos(LatRad)*(LongRad-LongOriginRad)
 
         M = a*((1	- eccSquared/4		- 3*eccSquared*eccSquared/64	- 5*eccSquared*eccSquared*eccSquared/256)*LatRad
                                 - (3*eccSquared/8	+ 3*eccSquared*eccSquared/32	+ 45*eccSquared*eccSquared*eccSquared/1024)*np.sin(2*LatRad)
                                                                         + (15*eccSquared*eccSquared/256 + 45*eccSquared*eccSquared*eccSquared/1024)*np.sin(4*LatRad)
-                                                                        - (35*eccSquared*eccSquared*eccSquared/3072)*np.sin(6*LatRad));
+                                                                        - (35*eccSquared*eccSquared*eccSquared/3072)*np.sin(6*LatRad))
 
         UTMEasting = (k0*N*(A+(1-T+C)*A*A*A/6
                                         + (5-18*T+T*T+72*C-58*eccPrimeSquared)*A*A*A*A*A/120)
-                                        + 500000.0);
+                                        + 500000.0)
 
         UTMNorthing = (k0*(M+N*np.tan(LatRad)*(A*A/2+(5-T+9*C+4*C*C)*A*A*A*A/24
-                                 + (61-58*T+T*T+600*C-330*eccPrimeSquared)*A*A*A*A*A*A/720)));
+                                 + (61-58*T+T*T+600*C-330*eccPrimeSquared)*A*A*A*A*A*A/720)))
 
         UTMNorthing[Lat<0]+= 10000000.0 #10000000 meter offset for southern hemisphere
 
@@ -420,13 +421,13 @@ class CoordinateConverter():
         M=0
         LongOrigin=0
         mu=0
-        phi1=0
+        _phi1=0
         phi1Rad=0
         x=0
         y=0
         ZoneNumber=0
         ZoneLetter=""
-        NorthernHemisphere=0 #1 for northern hemispher, 0 for southern
+        _NorthernHemisphere=0 #1 for northern hemispher, 0 for southern
 
         x = UTMEasting.copy() - 500000.0 #remove 500,000 meter offset for longitude
         y = UTMNorthing.copy()
@@ -434,9 +435,9 @@ class CoordinateConverter():
         ZoneNumber = int(fixed_UTMZone[:-1])
         ZoneLetter=fixed_UTMZone[-1]
         if ord(ZoneLetter) - ord('N') >= 0:
-            NorthernHemisphere = 1 #point is in northern hemisphere
+            _NorthernHemisphere = 1 #point is in northern hemisphere
         else:
-            NorthernHemisphere = 0 #point is in southern hemisphere
+            _NorthernHemisphere = 0 #point is in southern hemisphere
             y -= 10000000.0 #remove 10,000,000 meter offset used for southern hemisphere
 
         LongOrigin = (ZoneNumber - 1)*6 - 180 + 3   #+3 puts origin in middle of zone
@@ -447,7 +448,7 @@ class CoordinateConverter():
         mu = M/(a*(1-eccSquared/4-3*eccSquared*eccSquared/64-5*eccSquared*eccSquared*eccSquared/256))
 
         phi1Rad = mu+ (3*e1/2-27*e1*e1*e1/32)*np.sin(2*mu) + (21*e1*e1/16-55*e1*e1*e1*e1/32)*np.sin(4*mu)+(151*e1*e1*e1/96)*np.sin(6*mu)
-        phi1 = phi1Rad*self._rad2deg
+        _phi1 = phi1Rad*self._rad2deg
 
         N1 = a/np.sqrt(1-eccSquared*np.sin(phi1Rad)*np.sin(phi1Rad))
         T1 = np.tan(phi1Rad)*np.tan(phi1Rad)
@@ -460,8 +461,8 @@ class CoordinateConverter():
         Lat = Lat * self._rad2deg
 
         Long = (D-(1+2*T1+C1)*D*D*D/6+(5-2*C1+28*T1-3*C1*C1+8*eccPrimeSquared+24*T1*T1)
-                                        *D*D*D*D*D/120)/np.cos(phi1Rad);
-        Long = LongOrigin + Long * self._rad2deg;
+                                        *D*D*D*D*D/120)/np.cos(phi1Rad)
+        Long = LongOrigin + Long * self._rad2deg
 
         if len(np.array(Long).shape)>0:
             Long[Long<0]=360+Long[Long<0]
