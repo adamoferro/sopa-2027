@@ -43,27 +43,34 @@ DYN_RANGE_HIGH_DB = 30
 PERC_MIN_THR = 70
 PERC_MAX_THR = 99.8
 
+
 def write(filename: str, np_array: npt.NDArray, sim_data: bool = False) -> bool:
     """Writes the array as an 8-bit grayscale PNG after the power conversion and dynamic-range stretching described at module level; `sim_data=True` selects the percentile-based limits instead of the dB ones."""
-    if (np_array.dtype.name == "complex64" or np_array.dtype.name == "complex128"):
-        np_array_tmp = np.abs(np_array).astype("float64")**2.
+    if np_array.dtype.name == "complex64" or np_array.dtype.name == "complex128":
+        np_array_tmp = np.abs(np_array).astype("float64") ** 2.0
     else:
         np_array_tmp = np_array
 
     # noise mean estimation (it's complicated because PDS RDRs start with zeros)
-    mask = np_array_tmp!=0
+    mask = np_array_tmp != 0
     first_nonzero_values = np.where(mask.any(axis=0), mask.argmax(axis=0), -1)
     cols_not_ok = np.where(first_nonzero_values == -1)[0]
-    if len(cols_not_ok) == np_array_tmp.shape[1]:       # if all cols are not ok
+    if len(cols_not_ok) == np_array_tmp.shape[1]:  # if all cols are not ok
         print("ERROR: cannot determine noise mean")
         return False
 
     # mask values not considered for noise mean calculation with nans
     noise_array_tmp = np_array_tmp.copy()
-    first_nonzero_values[first_nonzero_values == -1] = 0        # reset to zero, but finally not considered (see next lines)
+    first_nonzero_values[first_nonzero_values == -1] = (
+        0  # reset to zero, but finally not considered (see next lines)
+    )
     mask = np.ones(noise_array_tmp.shape) * np.nan
     for i_col in np.arange(noise_array_tmp.shape[1]):
-        mask[:, first_nonzero_values[i_col]:first_nonzero_values[i_col]+TOP_NOISE_SAMPLES] = 1
+        mask[
+            :,
+            first_nonzero_values[i_col] : first_nonzero_values[i_col]
+            + TOP_NOISE_SAMPLES,
+        ] = 1
     if len(cols_not_ok) > 0:
         noise_array_tmp[:, cols_not_ok] = np.nan
 
@@ -71,22 +78,26 @@ def write(filename: str, np_array: npt.NDArray, sim_data: bool = False) -> bool:
 
     if not sim_data:
         # real data, dB conversion
-        noise_mean_db = 10.*np.log10(noise_mean)
+        noise_mean_db = 10.0 * np.log10(noise_mean)
         np_array_tmp[np_array_tmp == 0] = sys.float_info.min
-        np_array_tmp = 10.*np.log10(np_array_tmp)
-        LOW_THR = noise_mean_db-DYN_RANGE_LOW_DB
-        HIGH_THR = noise_mean_db+DYN_RANGE_HIGH_DB
+        np_array_tmp = 10.0 * np.log10(np_array_tmp)
+        LOW_THR = noise_mean_db - DYN_RANGE_LOW_DB
+        HIGH_THR = noise_mean_db + DYN_RANGE_HIGH_DB
     else:
         LOW_THR = np.percentile(np_array_tmp, PERC_MIN_THR)
         HIGH_THR = np.percentile(np_array_tmp, PERC_MAX_THR)
 
     # thresholding and stretching
-    np_array_tmp[np_array_tmp<LOW_THR] = LOW_THR
-    np_array_tmp[np_array_tmp>HIGH_THR] = HIGH_THR
-    np_array_tmp = ((np_array_tmp - LOW_THR) / (HIGH_THR - LOW_THR) * 255).astype("uint8")
+    np_array_tmp[np_array_tmp < LOW_THR] = LOW_THR
+    np_array_tmp[np_array_tmp > HIGH_THR] = HIGH_THR
+    np_array_tmp = ((np_array_tmp - LOW_THR) / (HIGH_THR - LOW_THR) * 255).astype(
+        "uint8"
+    )
 
     try:
-        png.from_array(np_array_tmp.copy(), 'L').save(filename)     # .copy() needed to avoid a pypng "bug" with some numpy ndarrays
+        png.from_array(np_array_tmp.copy(), "L").save(
+            filename
+        )  # .copy() needed to avoid a pypng "bug" with some numpy ndarrays
     except BaseException:
         print("ERROR: problem writing image to disk.")
         return False

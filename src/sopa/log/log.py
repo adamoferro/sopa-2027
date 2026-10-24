@@ -25,6 +25,7 @@
 them to the console, and append them to a text file on request.
 """
 
+
 class _logger_base:
     """Interface of the loggers used by the dataset readers and the processing classes."""
 
@@ -56,12 +57,14 @@ class logger(_logger_base):
     def log_write(self, filename: str) -> None:
         """Appends the buffered messages to the given text file and empties the buffer."""
         try:
-            with open(filename, 'a') as fp:
+            with open(filename, "a") as fp:
                 for lm in self.LOG_MESSAGES:
-                    fp.write(f'{lm}\n')
-                self.LOG_MESSAGES = list()           # empty for next write
+                    fp.write(f"{lm}\n")
+                self.LOG_MESSAGES = list()  # empty for next write
         except OSError:
-            print("ERROR: cannot write log file or append new messages to existing log file.")
+            print(
+                "ERROR: cannot write log file or append new messages to existing log file."
+            )
 
 
 class fake_logger(_logger_base):

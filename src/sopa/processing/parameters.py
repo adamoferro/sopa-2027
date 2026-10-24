@@ -34,7 +34,17 @@ processing chain.
 class _BaseProcessingParameters:
     """Common frame-range, aperture and range-weighting parameters. `frame_start` is clamped to `frame_half_aperture`; when `meters_skip` is given it takes priority over `frame_skip` (frame selection by equal ground distance instead of a fixed frame count)."""
 
-    def __init__(self, frame_start: int = 0, frame_end: int = -1, frame_skip: int = 1, meters_skip: float | None = None, frame_half_aperture: int = 768, squint_angle: float = 0, range_weighting_function: str = "hanning", range_weighting_kaiser_beta: float = 2) -> None:
+    def __init__(
+        self,
+        frame_start: int = 0,
+        frame_end: int = -1,
+        frame_skip: int = 1,
+        meters_skip: float | None = None,
+        frame_half_aperture: int = 768,
+        squint_angle: float = 0,
+        range_weighting_function: str = "hanning",
+        range_weighting_kaiser_beta: float = 2,
+    ) -> None:
         # frame_half_aperture               samples
         # squint_angle                      degrees
         # range_weighting_function          ["hanning","hamming","kaiser","none"]
@@ -58,13 +68,51 @@ class _BaseProcessingParameters:
 
 class SimulatorParameters(_BaseProcessingParameters):
     """Parameter set for the clutter simulators: frame range, frame/meters skip, synthetic-aperture half length, squint angle and range weighting window."""
-    def __init__(self, frame_start: int = 0, frame_end: int = -1, frame_skip: int = 1, meters_skip: float | None = None, frame_half_aperture: int = 768, squint_angle: float = 0, range_weighting_function: str = "hanning", range_weighting_kaiser_beta: float = 2) -> None:
-        super().__init__(frame_start, frame_end, frame_skip, meters_skip, frame_half_aperture, squint_angle, range_weighting_function, range_weighting_kaiser_beta)
+
+    def __init__(
+        self,
+        frame_start: int = 0,
+        frame_end: int = -1,
+        frame_skip: int = 1,
+        meters_skip: float | None = None,
+        frame_half_aperture: int = 768,
+        squint_angle: float = 0,
+        range_weighting_function: str = "hanning",
+        range_weighting_kaiser_beta: float = 2,
+    ) -> None:
+        super().__init__(
+            frame_start,
+            frame_end,
+            frame_skip,
+            meters_skip,
+            frame_half_aperture,
+            squint_angle,
+            range_weighting_function,
+            range_weighting_kaiser_beta,
+        )
 
 
 class FocuserParameters(_BaseProcessingParameters):
     """Parameter set for the focuser: adds the multilooking Doppler bandwidth, the range-migration and Doppler-phase compensation switches, the azimuth weighting window, and the Gaussian-filter multilooking decomposition (number of filters and alpha coefficient)."""
-    def __init__(self, frame_start: int = 0, frame_end: int = -1, frame_skip: int = 1, meters_skip: float | None = None, frame_half_aperture: int = 768, squint_angle: float = 0, multilooking_doppler_bandwidth: float = 0.8, correct_range_migration: bool = True, compensate_doppler_phase: bool = True, range_weighting_function: str = "hanning", range_weighting_kaiser_beta: float = 2, azimuth_weighting_function: str = "hanning", azimuth_weighting_kaiser_beta: float = 2, gauss_rec_n_filters: int = 0, gauss_rec_alpha: float = 0.66) -> None:
+
+    def __init__(
+        self,
+        frame_start: int = 0,
+        frame_end: int = -1,
+        frame_skip: int = 1,
+        meters_skip: float | None = None,
+        frame_half_aperture: int = 768,
+        squint_angle: float = 0,
+        multilooking_doppler_bandwidth: float = 0.8,
+        correct_range_migration: bool = True,
+        compensate_doppler_phase: bool = True,
+        range_weighting_function: str = "hanning",
+        range_weighting_kaiser_beta: float = 2,
+        azimuth_weighting_function: str = "hanning",
+        azimuth_weighting_kaiser_beta: float = 2,
+        gauss_rec_n_filters: int = 0,
+        gauss_rec_alpha: float = 0.66,
+    ) -> None:
         # multilooking_doppler_bandwidth    Hz
         # correct_range_migration           boolean
         # compensate_doppler_phase          boolean
@@ -73,7 +121,16 @@ class FocuserParameters(_BaseProcessingParameters):
         # gauss_rec_n_filters               int >= 0
         # gauss_rec_alpha                   float > 0
 
-        super().__init__(frame_start, frame_end, frame_skip, meters_skip, frame_half_aperture, squint_angle, range_weighting_function, range_weighting_kaiser_beta)
+        super().__init__(
+            frame_start,
+            frame_end,
+            frame_skip,
+            meters_skip,
+            frame_half_aperture,
+            squint_angle,
+            range_weighting_function,
+            range_weighting_kaiser_beta,
+        )
         self.multilooking_doppler_bandwidth = multilooking_doppler_bandwidth
         self.correct_range_migration = correct_range_migration
         self.compensate_doppler_phase = compensate_doppler_phase

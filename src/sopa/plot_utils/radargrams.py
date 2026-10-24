@@ -35,10 +35,20 @@ from matplotlib import pyplot as pp
 class _BaseRadargramPlot:
     """Common implementation of the radargram plots: prepares the image (optional dB conversion), the display limits (fixed, from the data, or from the histogram of the central 0.5-99.5% of the values) and the vertical crop."""
 
-    def __init__(self, image: npt.NDArray[np.float64], db_output: bool = False, min_value: float = -1, max_value: float = -1, method: str | None = None, top_point: int = 0, bottom_point: int = -1, title: str = "") -> None:
+    def __init__(
+        self,
+        image: npt.NDArray[np.float64],
+        db_output: bool = False,
+        min_value: float = -1,
+        max_value: float = -1,
+        method: str | None = None,
+        top_point: int = 0,
+        bottom_point: int = -1,
+        title: str = "",
+    ) -> None:
         self._db_output = db_output
         if self._db_output:
-            self._image = 10.*np.log10(image)
+            self._image = 10.0 * np.log10(image)
         else:
             self._image = image
 
@@ -79,7 +89,13 @@ class _BaseRadargramPlot:
     def plot(self, cmap: str | matplotlib.colors.Colormap = "gray") -> None:
         """Shows the prepared image with the given colormap and limits."""
         pp.figure(figsize=(12, 6))
-        pp.imshow(self._image[self._top_point:self._bottom_point, :], cmap=cmap, vmin=self._min_value, vmax=self._max_value, interpolation="none")
+        pp.imshow(
+            self._image[self._top_point : self._bottom_point, :],
+            cmap=cmap,
+            vmin=self._min_value,
+            vmax=self._max_value,
+            interpolation="none",
+        )
         pp.title(self._title, fontweight="bold")
         pp.ylabel("Samples", fontweight="bold")
         pp.xlabel("Frames", fontweight="bold")
@@ -90,25 +106,67 @@ class _BaseRadargramPlot:
 class RadargramPlot(_BaseRadargramPlot):
     """Displays a focused radargram, converted to dB and with histogram-based limits by default."""
 
-    def __init__(self, image: npt.NDArray[np.float64], db_output: bool = True, min_value: float = -1, max_value: float = -1, method: str = "hist", top_point: int = 0, bottom_point: int = -1, title: str = "") -> None:
-        super().__init__(image, db_output, min_value, max_value, method, top_point, bottom_point, title)
+    def __init__(
+        self,
+        image: npt.NDArray[np.float64],
+        db_output: bool = True,
+        min_value: float = -1,
+        max_value: float = -1,
+        method: str = "hist",
+        top_point: int = 0,
+        bottom_point: int = -1,
+        title: str = "",
+    ) -> None:
+        super().__init__(
+            image,
+            db_output,
+            min_value,
+            max_value,
+            method,
+            top_point,
+            bottom_point,
+            title,
+        )
 
 
 class SimulationPlot(_BaseRadargramPlot):
     """Displays a simulated radargram (linear power, no dB conversion)."""
 
-    def __init__(self, image: npt.NDArray[np.float64], min_value: float = -1, max_value: float = -1, method: str = "hist", top_point: int = 0, bottom_point: int = -1, title: str = "") -> None:
-        super().__init__(image, False, min_value, max_value, method, top_point, bottom_point, title)
+    def __init__(
+        self,
+        image: npt.NDArray[np.float64],
+        min_value: float = -1,
+        max_value: float = -1,
+        method: str = "hist",
+        top_point: int = 0,
+        bottom_point: int = -1,
+        title: str = "",
+    ) -> None:
+        super().__init__(
+            image, False, min_value, max_value, method, top_point, bottom_point, title
+        )
 
 
 class GroundDistancePlot(_BaseRadargramPlot):
     """Displays the minimum/maximum ground-distance images produced by the simulators (no dB conversion, default range 0-20 m); not-a-number values are rendered black."""
 
-    def __init__(self, image: npt.NDArray[np.float64], min_value: float = 0, max_value: float = 20, top_point: int = 0, bottom_point: int = -1, title: str = "") -> None:
-        super().__init__(image, False, min_value, max_value, None, top_point, bottom_point, title)
+    def __init__(
+        self,
+        image: npt.NDArray[np.float64],
+        min_value: float = 0,
+        max_value: float = 20,
+        top_point: int = 0,
+        bottom_point: int = -1,
+        title: str = "",
+    ) -> None:
+        super().__init__(
+            image, False, min_value, max_value, None, top_point, bottom_point, title
+        )
 
     def plot(self) -> None:
         """Same display as the base class, with a colormap whose not-a-number values are rendered black."""
-        nan_cmap = matplotlib.colormaps["gist_rainbow"].copy()      # 2026 port: matplotlib.cm.get_cmap was removed
-        nan_cmap.set_bad(color='black')
+        nan_cmap = matplotlib.colormaps[
+            "gist_rainbow"
+        ].copy()  # 2026 port: matplotlib.cm.get_cmap was removed
+        nan_cmap.set_bad(color="black")
         super().plot(cmap=nan_cmap)

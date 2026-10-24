@@ -61,16 +61,27 @@ def _write_dataset(directory: Path) -> None:
 def _make_rdr(directory: Path) -> tuple[RDR, logger]:
     """Builds a US RDR reader with an in-memory logger."""
     lg = logger(verbose=False)
-    return RDR(dataset_name="test", filename_base=str(directory / "s_test"), logger=lg), lg
+    return RDR(
+        dataset_name="test", filename_base=str(directory / "s_test"), logger=lg
+    ), lg
 
 
 def test_log_message_tables_complete() -> None:
     """Checks that the reader's log-message module exposes the message keys
     used by the reader, each mapped to a non-empty string."""
-    for key in ["orbit_file_read", "orbit_file_decode", "orbit_file_generic",
-                "other_file_not-found", "data_frame-limits", "data_read"]:
+    for key in [
+        "orbit_file_read",
+        "orbit_file_decode",
+        "orbit_file_generic",
+        "other_file_not-found",
+        "data_frame-limits",
+        "data_read",
+    ]:
         assert key in pds_us_log.ERR_MESSAGES
-        assert isinstance(pds_us_log.ERR_MESSAGES[key], str) and pds_us_log.ERR_MESSAGES[key] != ""
+        assert (
+            isinstance(pds_us_log.ERR_MESSAGES[key], str)
+            and pds_us_log.ERR_MESSAGES[key] != ""
+        )
 
 
 def test_load_full(tmp_path: Path) -> None:
@@ -93,7 +104,9 @@ def test_load_full(tmp_path: Path) -> None:
     np.testing.assert_allclose(data, expected)
 
 
-def test_generate_orbit_data(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_generate_orbit_data(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Checks orbit-data generation: radius converted to meters, cartesian
     positions computed from lat/lon/radius, zero receive-window times and
     time offsets in seconds from the timestamps."""
@@ -105,18 +118,24 @@ def test_generate_orbit_data(tmp_path: Path, capsys: pytest.CaptureFixture[str])
     assert orbit is not None
     np.testing.assert_allclose(orbit["Radius"], GEOM_RADIUS_KM * 1000.0)
     cc = MARS_IAU2000()
-    x, y, z = cc.to_xyz_from_latlon_and_radius(GEOM_LAT, GEOM_LON, GEOM_RADIUS_KM * 1000.0)
+    x, y, z = cc.to_xyz_from_latlon_and_radius(
+        GEOM_LAT, GEOM_LON, GEOM_RADIUS_KM * 1000.0
+    )
     np.testing.assert_allclose(orbit["X"], x, rtol=1e-12)
     np.testing.assert_allclose(orbit["Y"], y, rtol=1e-12)
     np.testing.assert_allclose(orbit["Z"], z, rtol=1e-12)
     np.testing.assert_array_equal(orbit["rxwin_time_s"], np.zeros(N_FRAMES))
-    np.testing.assert_allclose(orbit["time_offset_s"], np.arange(N_FRAMES, dtype="float64"))
+    np.testing.assert_allclose(
+        orbit["time_offset_s"], np.arange(N_FRAMES, dtype="float64")
+    )
     np.testing.assert_allclose(orbit["Vtang"], np.full(N_FRAMES, 3200.0))
     assert orbit["dt"] == 3 / 80e6
     assert "WARNING" in capsys.readouterr().out
 
 
-def test_generate_orbit_data_before_ancillary(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_generate_orbit_data_before_ancillary(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Checks that orbit-data generation before the ancillary load reports an
     error and leaves the orbit data unset."""
     _write_dataset(tmp_path)

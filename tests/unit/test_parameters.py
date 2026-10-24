@@ -47,8 +47,13 @@ def test_simulator_parameters_defaults() -> None:
 def test_frame_start_clamped_to_half_aperture() -> None:
     """Checks that a frame start smaller than the half aperture is clamped,
     and a larger one is kept."""
-    assert SimulatorParameters(frame_start=100, frame_half_aperture=200).frame_start == 200
-    assert SimulatorParameters(frame_start=1000, frame_half_aperture=200).frame_start == 1000
+    assert (
+        SimulatorParameters(frame_start=100, frame_half_aperture=200).frame_start == 200
+    )
+    assert (
+        SimulatorParameters(frame_start=1000, frame_half_aperture=200).frame_start
+        == 1000
+    )
 
 
 def test_meters_skip_takes_priority() -> None:

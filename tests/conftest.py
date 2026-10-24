@@ -32,7 +32,7 @@ every test, so that figures leaked by one test never reach the next one.
 
 import matplotlib
 
-matplotlib.use("Agg")       # non-interactive backend; must be set before any pyplot import
+matplotlib.use("Agg")  # non-interactive backend; must be set before any pyplot import
 
 from collections.abc import Iterator
 

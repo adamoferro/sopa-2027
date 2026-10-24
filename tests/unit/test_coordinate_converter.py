@@ -50,18 +50,29 @@ def test_mars_ellipsoid_constants(cc: MARS_IAU2000) -> None:
     assert cc._ELLIPSOID_POLAR_RADIUS == 3376200.0
     assert cc._MEAN_RADIUS == 3389500.0
     assert cc._FLATTENING == pytest.approx((3396190.0 - 3376200.0) / 3396190.0)
-    assert cc._ECCENTRICITY_SQUARED == pytest.approx((3396190.0**2 - 3376200.0**2) / 3396190.0**2)
+    assert cc._ECCENTRICITY_SQUARED == pytest.approx(
+        (3396190.0**2 - 3376200.0**2) / 3396190.0**2
+    )
 
 
 def test_to_radius_from_xyz() -> None:
     """Checks the cartesian norm on a 3-4-5 triangle."""
-    r = CoordinateConverter.to_radius_from_xyz(np.array([3.0]), np.array([4.0]), np.array([0.0]))
+    r = CoordinateConverter.to_radius_from_xyz(
+        np.array([3.0]), np.array([4.0]), np.array([0.0])
+    )
     assert r[0] == pytest.approx(5.0)
 
 
 def test_euclidean_distance_cart() -> None:
     """Checks the euclidean distance between two cartesian points."""
-    d = CoordinateConverter.euclidean_distance_cart(np.array([0.0]), np.array([0.0]), np.array([0.0]), np.array([3.0]), np.array([4.0]), np.array([0.0]))
+    d = CoordinateConverter.euclidean_distance_cart(
+        np.array([0.0]),
+        np.array([0.0]),
+        np.array([0.0]),
+        np.array([3.0]),
+        np.array([4.0]),
+        np.array([0.0]),
+    )
     assert d[0] == pytest.approx(5.0)
 
 
@@ -98,15 +109,24 @@ def test_add_radius_offset_to_orbit(cc: MARS_IAU2000) -> None:
     lon = np.array([10.0, 11.0])
     radius = np.array([3646190.0, 3646290.0])
     x, y, z = cc.to_xyz_from_latlon_and_radius(lat, lon, radius)
-    orbit_data: dict[str, npt.NDArray[np.float64] | float] = {"Lat": lat, "Lon": lon, "Radius": radius, "X": x, "Y": y, "Z": z}
+    orbit_data: dict[str, npt.NDArray[np.float64] | float] = {
+        "Lat": lat,
+        "Lon": lon,
+        "Radius": radius,
+        "X": x,
+        "Y": y,
+        "Z": z,
+    }
     offset = np.array([100.0, 200.0])
     new_orbit_data = cc.add_radius_offset_to_orbit(orbit_data, offset)
     np.testing.assert_allclose(new_orbit_data["Radius"], radius + offset)
-    nx, ny, nz = cc.to_xyz_from_latlon_and_radius(lat, lon, np.asarray(new_orbit_data["Radius"]))
+    nx, ny, nz = cc.to_xyz_from_latlon_and_radius(
+        lat, lon, np.asarray(new_orbit_data["Radius"])
+    )
     np.testing.assert_allclose(new_orbit_data["X"], nx)
     np.testing.assert_allclose(new_orbit_data["Y"], ny)
     np.testing.assert_allclose(new_orbit_data["Z"], nz)
-    assert orbit_data["Radius"][0] == 3646190.0        # input dict not modified
+    assert orbit_data["Radius"][0] == 3646190.0  # input dict not modified
 
 
 def test_to_latlon_area_from_circle_area_equator(cc: MARS_IAU2000) -> None:
@@ -122,18 +142,27 @@ def test_to_latlon_area_from_circle_area_equator(cc: MARS_IAU2000) -> None:
     assert lon_w == pytest.approx(-expected)
 
 
-def test_to_latlon_area_from_circle_area_none_over_half_sphere(cc: MARS_IAU2000) -> None:
+def test_to_latlon_area_from_circle_area_none_over_half_sphere(
+    cc: MARS_IAU2000,
+) -> None:
     """Checks that a radius reaching half the sphere returns None."""
-    assert cc.to_latlon_area_from_circle_area(0.0, 0.0, cc._MEAN_RADIUS * np.pi / 2.0) is None
+    assert (
+        cc.to_latlon_area_from_circle_area(0.0, 0.0, cc._MEAN_RADIUS * np.pi / 2.0)
+        is None
+    )
 
 
 def test_to_latlon_area_from_circle_area_pole_clamping(cc: MARS_IAU2000) -> None:
     """Checks the pole cases: a circle overlapping the north (or south) pole
     spans all longitudes with the pole latitude clamped."""
-    lat_n, lat_s, lon_e, lon_w = cc.to_latlon_area_from_circle_area(89.9999, 10.0, 500.0)
+    lat_n, lat_s, lon_e, lon_w = cc.to_latlon_area_from_circle_area(
+        89.9999, 10.0, 500.0
+    )
     assert lat_n == 90.0 and (lon_w, lon_e) == (0.0, 360.0)
     assert lat_s == pytest.approx(89.9999 - 180.0 / np.pi * (500.0 / cc._MEAN_RADIUS))
-    lat_n, lat_s, lon_e, lon_w = cc.to_latlon_area_from_circle_area(-89.9999, 10.0, 500.0)
+    lat_n, lat_s, lon_e, lon_w = cc.to_latlon_area_from_circle_area(
+        -89.9999, 10.0, 500.0
+    )
     assert lat_s == -90.0 and (lon_w, lon_e) == (0.0, 360.0)
 
 
@@ -141,8 +170,12 @@ def test_ellipsoid_radius_at_reference_latitudes(cc: MARS_IAU2000) -> None:
     """Checks the local ellipsoid radius: equatorial radius at the equator,
     polar radius at the poles, in between at mid-latitudes. The longitude
     argument is required by the signature but unused by the computation."""
-    assert cc.get_ellipsoid_radius_from_latlon(np.array([0.0]), np.array([0.0]))[0] == pytest.approx(3396190.0)
-    assert cc.get_ellipsoid_radius_from_latlon(np.array([90.0]), np.array([0.0]))[0] == pytest.approx(3376200.0)
+    assert cc.get_ellipsoid_radius_from_latlon(np.array([0.0]), np.array([0.0]))[
+        0
+    ] == pytest.approx(3396190.0)
+    assert cc.get_ellipsoid_radius_from_latlon(np.array([90.0]), np.array([0.0]))[
+        0
+    ] == pytest.approx(3376200.0)
     mid = cc.get_ellipsoid_radius_from_latlon(np.array([45.0]), np.array([0.0]))[0]
     assert 3376200.0 < mid < 3396190.0
 
@@ -160,9 +193,13 @@ def test_ellipsoid_xyz_norm_equals_local_radius(cc: MARS_IAU2000) -> None:
 def test_angle_between_basic_vectors() -> None:
     """Checks the vector angle on the orthogonal, identical and opposite
     cases (the examples of the function docstring)."""
-    assert CoordinateConverter.angle_between((1, 0, 0), (0, 1, 0)) == pytest.approx(np.pi / 2)
+    assert CoordinateConverter.angle_between((1, 0, 0), (0, 1, 0)) == pytest.approx(
+        np.pi / 2
+    )
     assert CoordinateConverter.angle_between((1, 0, 0), (1, 0, 0)) == pytest.approx(0.0)
-    assert CoordinateConverter.angle_between((1, 0, 0), (-1, 0, 0)) == pytest.approx(np.pi)
+    assert CoordinateConverter.angle_between((1, 0, 0), (-1, 0, 0)) == pytest.approx(
+        np.pi
+    )
 
 
 def test_angle_between_matrices() -> None:
@@ -187,8 +224,8 @@ def test_utm_roundtrip_northern_hemisphere(cc: MARS_IAU2000) -> None:
     lon = np.array([90.0])
     northing, easting, zones, zone_numbers = cc.LL_to_UTM(lat, lon)
     assert zones[0] == "46T" and zone_numbers[0] == 46
-    assert 2.6e6 < northing[0] < 2.7e6     # meridian distance at Mars scale
-    assert easting[0] < 500000.0           # lon 90 is west of the zone 46 origin (93 deg)
+    assert 2.6e6 < northing[0] < 2.7e6  # meridian distance at Mars scale
+    assert easting[0] < 500000.0  # lon 90 is west of the zone 46 origin (93 deg)
     lat_back, lon_back = cc.UTM_to_LL(northing, easting, "46T")
     assert lat_back[0] == pytest.approx(45.0, abs=1e-6)
     assert lon_back[0] == pytest.approx(90.0, abs=1e-6)
@@ -201,7 +238,7 @@ def test_utm_roundtrip_southern_hemisphere(cc: MARS_IAU2000) -> None:
     lon = np.array([90.0])
     northing, easting, zones, _ = cc.LL_to_UTM(lat, lon)
     assert zones[0] == "46G"
-    assert 7.3e6 < northing[0] < 7.4e6     # southing plus the 10000000 m offset
+    assert 7.3e6 < northing[0] < 7.4e6  # southing plus the 10000000 m offset
     lat_back, lon_back = cc.UTM_to_LL(northing, easting, "46G")
     assert lat_back[0] == pytest.approx(-45.0, abs=1e-6)
     assert lon_back[0] == pytest.approx(90.0, abs=1e-6)
@@ -213,7 +250,9 @@ def test_utm_with_given_zone_matches_auto_zone(cc: MARS_IAU2000) -> None:
     lat = np.array([45.0])
     lon = np.array([90.0])
     northing_auto, easting_auto, _, zone_numbers = cc.LL_to_UTM(lat, lon)
-    northing_fixed, easting_fixed = cc.LL_to_UTM_with_given_zone_number(lat, lon, int(zone_numbers[0]))
+    northing_fixed, easting_fixed = cc.LL_to_UTM_with_given_zone_number(
+        lat, lon, int(zone_numbers[0])
+    )
     np.testing.assert_allclose(northing_fixed, northing_auto)
     np.testing.assert_allclose(easting_fixed, easting_auto)
 
@@ -231,7 +270,9 @@ def test_get_frame_ids_from_skip_distance(cc: MARS_IAU2000) -> None:
     per-interval frame-count estimates are consistent."""
     lat = np.zeros(12)
     lon = np.linspace(0.0, 0.55, 12)
-    ids, min_n_frames, max_n_frames = cc.get_frame_ids_from_skip_distance(lat, lon, 6000.0)
+    ids, min_n_frames, max_n_frames = cc.get_frame_ids_from_skip_distance(
+        lat, lon, 6000.0
+    )
     assert ids[0] == 0
     assert np.all(np.diff(ids) > 0)
     assert len(ids) >= 2

@@ -28,8 +28,12 @@
 ERR_MESSAGES = dict()
 ERR_MESSAGES["orbit_file_not-found"] = "ERROR: orbit file not present."
 ERR_MESSAGES["orbit_file_read"] = "ERROR: cannot read orbit file."
-ERR_MESSAGES["orbit_file_decode"] = "ERROR: cannot decode orbit file. Try --use_gzip option."
+ERR_MESSAGES["orbit_file_decode"] = (
+    "ERROR: cannot decode orbit file. Try --use_gzip option."
+)
 ERR_MESSAGES["orbit_file_generic"] = "ERROR: problem while reading orbit file."
-ERR_MESSAGES["other_file_not-found"] = "ERROR: header and/or aux and/or data file not present."
+ERR_MESSAGES["other_file_not-found"] = (
+    "ERROR: header and/or aux and/or data file not present."
+)
 ERR_MESSAGES["data_frame-limits"] = "ERROR: start_frame and/or end_frame not valid."
 ERR_MESSAGES["data_read"] = "ERROR: could not read data."

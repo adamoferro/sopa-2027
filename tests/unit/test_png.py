@@ -77,7 +77,9 @@ def test_write_complex_converts_to_power(tmp_path: Path) -> None:
     assert out.is_file()
 
 
-def test_write_all_zero_image_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_write_all_zero_image_fails(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Checks that an all-zero image cannot be stretched (no noise level can
     be estimated): the write reports failure before any file is produced."""
     out = tmp_path / "zero.png"

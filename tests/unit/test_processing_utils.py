@@ -42,14 +42,28 @@ SIZE_RANGE_FFT = 4096
 def test_shape_and_dtype() -> None:
     """Checks that the chirp conjugate spectrum is a complex128 vector of the
     requested FFT length."""
-    out = ProcessingUtils.create_synthetic_chirp_conj(FREQUENCY, BANDWIDTH, CHIRP_DURATION, FS, np.ones(SIZE_RANGE_FFT // 2), SIZE_RANGE_FFT)
+    out = ProcessingUtils.create_synthetic_chirp_conj(
+        FREQUENCY,
+        BANDWIDTH,
+        CHIRP_DURATION,
+        FS,
+        np.ones(SIZE_RANGE_FFT // 2),
+        SIZE_RANGE_FFT,
+    )
     assert out.shape == (SIZE_RANGE_FFT,)
     assert out.dtype == np.dtype("complex128")
 
 
 def test_zero_window_zeroes_spectrum() -> None:
     """Checks that a null range weighting window nulls the whole spectrum."""
-    out = ProcessingUtils.create_synthetic_chirp_conj(FREQUENCY, BANDWIDTH, CHIRP_DURATION, FS, np.zeros(SIZE_RANGE_FFT // 2), SIZE_RANGE_FFT)
+    out = ProcessingUtils.create_synthetic_chirp_conj(
+        FREQUENCY,
+        BANDWIDTH,
+        CHIRP_DURATION,
+        FS,
+        np.zeros(SIZE_RANGE_FFT // 2),
+        SIZE_RANGE_FFT,
+    )
     np.testing.assert_array_equal(out, np.zeros(SIZE_RANGE_FFT, dtype="complex128"))
 
 
@@ -58,7 +72,9 @@ def test_matched_filter_peaks_at_zero_lag() -> None:
     the conjugate synthetic spectrum and transforming back yields the chirp
     autocorrelation, whose maximum is at zero lag."""
     window = np.ones(SIZE_RANGE_FFT // 2)
-    chirp_conj = ProcessingUtils.create_synthetic_chirp_conj(FREQUENCY, BANDWIDTH, CHIRP_DURATION, FS, window, SIZE_RANGE_FFT)
+    chirp_conj = ProcessingUtils.create_synthetic_chirp_conj(
+        FREQUENCY, BANDWIDTH, CHIRP_DURATION, FS, window, SIZE_RANGE_FFT
+    )
     t_chirp = np.arange(0, CHIRP_DURATION, 1.0 / FS)
     f0 = FREQUENCY + BANDWIDTH / 2.0
     f1 = FREQUENCY - BANDWIDTH / 2.0

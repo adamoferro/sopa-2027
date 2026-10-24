@@ -69,16 +69,26 @@ GEOM_Z_KM = 3000.0 + np.arange(N_FRAMES)
 DCG_DELAY = 11.98e-6
 
 
-def _write_dataset(directory: Path, header_fields: list[tuple[str, str]] | None = None, n_aux_rows: int = N_FRAMES) -> None:
+def _write_dataset(
+    directory: Path,
+    header_fields: list[tuple[str, str]] | None = None,
+    n_aux_rows: int = N_FRAMES,
+) -> None:
     """Writes a complete CO-SHARPS dataset (header, aux, HK, orbit, mode data);
     single fields can be overridden for the rejection tests."""
     fields = header_fields if header_fields is not None else HEADER_FIELDS
-    (directory / "e_test_Header.txt").write_text("\n".join(f"{f}\t{v}" for f, v in fields) + "\n")
-    aux_lines = [f"{float(i):.1f},{1000.0 + 10.0 * float(i):.1f},0" for i in range(n_aux_rows)]
+    (directory / "e_test_Header.txt").write_text(
+        "\n".join(f"{f}\t{v}" for f, v in fields) + "\n"
+    )
+    aux_lines = [
+        f"{float(i):.1f},{1000.0 + 10.0 * float(i):.1f},0" for i in range(n_aux_rows)
+    ]
     (directory / "e_test_Aux_001.csv").write_text("\n".join(aux_lines) + "\n")
     (directory / "e_test_HK.dat").write_text("# no telemetry here\n")
     geom_header = "\n".join(f"# orbit header line {i}" for i in range(7))
-    timestamp = np.datetime64("2026-01-01T00:00:00.000") + np.arange(N_FRAMES) * np.timedelta64(1000, "ms")
+    timestamp = np.datetime64("2026-01-01T00:00:00.000") + np.arange(
+        N_FRAMES
+    ) * np.timedelta64(1000, "ms")
     rows = [
         f"{t}\t"
         f"{GEOM_LAT[i]}\t{GEOM_LON[i]}\t{GEOM_RADIUS_KM[i]}\t{3200.0}\t{0.0}\t"
@@ -86,7 +96,9 @@ def _write_dataset(directory: Path, header_fields: list[tuple[str, str]] | None 
         f"{1.0}\t{2.0}\t{3.0}\t{4.0}\t{5.0}\t{6.0}\t{7.0}\t{8.0}\t{9.0}\t{45.0}\t{10.0}\t{11.0}"
         for i, t in enumerate(timestamp)
     ]
-    (directory / "e_test_Orbit_1.txt").write_text(geom_header + "\n" + "\n".join(rows) + "\n")
+    (directory / "e_test_Orbit_1.txt").write_text(
+        geom_header + "\n" + "\n".join(rows) + "\n"
+    )
     data = ((np.arange(N_FRAMES * N_SAMPLES) % 128) - 64).astype("int8")
     (directory / "e_test_Mode_001.dat").write_bytes(data.tobytes())
 
@@ -94,7 +106,12 @@ def _write_dataset(directory: Path, header_fields: list[tuple[str, str]] | None 
 def _make_edr(directory: Path, **kwargs: Any) -> tuple[EDR, logger]:
     """Builds a CO-SHARPS EDR reader with an in-memory logger."""
     lg = logger(verbose=False)
-    return EDR(dataset_name="test", filename_base=str(directory / "e_test"), logger=lg, **kwargs), lg
+    return EDR(
+        dataset_name="test",
+        filename_base=str(directory / "e_test"),
+        logger=lg,
+        **kwargs,
+    ), lg
 
 
 def _hk_line(seconds_hex: str, frac_hex: str, payload_hex: str) -> str:
@@ -106,12 +123,28 @@ def _hk_line(seconds_hex: str, frac_hex: str, payload_hex: str) -> str:
 def test_log_message_tables_complete() -> None:
     """Checks that the reader's log-message module exposes the message keys
     used by the reader, each mapped to a non-empty string."""
-    for key in ["header_file_generic", "header_file_read", "header_file_decode", "aux_file_read",
-                "aux_file_generic", "orbit_file_not-found", "orbit_file_read", "orbit_file_generic",
-                "other_file_not-found", "discarded", "no-consistency", "data_frame-limits", "data_read",
-                "hk-data_read", "hk_file_generic"]:
+    for key in [
+        "header_file_generic",
+        "header_file_read",
+        "header_file_decode",
+        "aux_file_read",
+        "aux_file_generic",
+        "orbit_file_not-found",
+        "orbit_file_read",
+        "orbit_file_generic",
+        "other_file_not-found",
+        "discarded",
+        "no-consistency",
+        "data_frame-limits",
+        "data_read",
+        "hk-data_read",
+        "hk_file_generic",
+    ]:
         assert key in cosharps_log.ERR_MESSAGES
-        assert isinstance(cosharps_log.ERR_MESSAGES[key], str) and cosharps_log.ERR_MESSAGES[key] != ""
+        assert (
+            isinstance(cosharps_log.ERR_MESSAGES[key], str)
+            and cosharps_log.ERR_MESSAGES[key] != ""
+        )
 
 
 def test_load_full(tmp_path: Path) -> None:
@@ -127,7 +160,12 @@ def test_load_full(tmp_path: Path) -> None:
     assert data is not None
     assert data.shape == (N_SAMPLES, N_FRAMES)
     assert data.dtype == np.dtype("float64")
-    expected = ((np.arange(N_FRAMES * N_SAMPLES) % 128) - 64).astype("float64").reshape(N_FRAMES, N_SAMPLES).T
+    expected = (
+        ((np.arange(N_FRAMES * N_SAMPLES) % 128) - 64)
+        .astype("float64")
+        .reshape(N_FRAMES, N_SAMPLES)
+        .T
+    )
     np.testing.assert_array_equal(data, expected)
 
 
@@ -193,8 +231,12 @@ def test_hk_data_parsing(tmp_path: Path) -> None:
     hex seconds/fraction) and the eight payload bytes."""
     _write_dataset(tmp_path)
     (tmp_path / "e_test_HK.dat").write_text(
-        "# comment\n" + _hk_line("0000000A", "8000", "0102030405060708") + "\n"
-        + "noise line without label\n" + _hk_line("00000014", "0000", "0807060504030201") + "\n"
+        "# comment\n"
+        + _hk_line("0000000A", "8000", "0102030405060708")
+        + "\n"
+        + "noise line without label\n"
+        + _hk_line("00000014", "0000", "0807060504030201")
+        + "\n"
     )
     d, _ = _make_edr(tmp_path, read_hk_data=True)
     assert d.load(mode="ancillary") is True
@@ -203,8 +245,16 @@ def test_hk_data_parsing(tmp_path: Path) -> None:
     assert hk["timestamp_ms"].shape == (2,)
     assert hk["timestamp_ms"][0] == pytest.approx((315532800 + 10.5) * 1000.0)
     assert hk["timestamp_ms"][1] == pytest.approx((315532800 + 20.0) * 1000.0)
-    for key, first, second in [("des_temp", 1, 8), ("des_5v", 2, 7), ("des_12v", 3, 6), ("des_2v5", 4, 5),
-                               ("rx_temp", 5, 4), ("tx_temp", 6, 3), ("tx_lev", 7, 2), ("tx_curr", 8, 1)]:
+    for key, first, second in [
+        ("des_temp", 1, 8),
+        ("des_5v", 2, 7),
+        ("des_12v", 3, 6),
+        ("des_2v5", 4, 5),
+        ("rx_temp", 5, 4),
+        ("tx_temp", 6, 3),
+        ("tx_lev", 7, 2),
+        ("tx_curr", 8, 1),
+    ]:
         assert hk[key][0] == first and hk[key][1] == second
 
 

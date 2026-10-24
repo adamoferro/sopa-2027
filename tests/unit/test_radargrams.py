@@ -27,7 +27,6 @@ synthetic image, with the histogram-based, fixed-limit and not-a-number-aware
 dynamic-range variants. Pixel content is not verified.
 """
 
-
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
@@ -48,7 +47,9 @@ def _one_figure_produced() -> None:
     assert len(plt.get_fignums()) == 1
 
 
-def test_radargram_plot_default_histogram_limits(image: npt.NDArray[np.float64]) -> None:
+def test_radargram_plot_default_histogram_limits(
+    image: npt.NDArray[np.float64],
+) -> None:
     """Checks the focused-radargram plot defaults: dB conversion with
     histogram-based limits."""
     RadargramPlot(image).plot()
@@ -57,7 +58,9 @@ def test_radargram_plot_default_histogram_limits(image: npt.NDArray[np.float64])
 
 def test_radargram_plot_fixed_limits(image: npt.NDArray[np.float64]) -> None:
     """Checks the fixed-limit variant without dB conversion."""
-    RadargramPlot(image, db_output=False, min_value=0.0, max_value=10.0, method=None).plot()
+    RadargramPlot(
+        image, db_output=False, min_value=0.0, max_value=10.0, method=None
+    ).plot()
     _one_figure_produced()
 
 

@@ -49,8 +49,20 @@ from sopa.input.sharad.data.edr import pds_log as log_messages
 class EDR(RSData):
     """PDS EDR dataset: reads and validates the label fields against the expected SHARAD subsurface-sounding acquisition values, reads the binary orbit ancillary file, and unpacks and statically decompresses the raw echo data."""
 
-    def __init__(self, dataset_name: str = "no name", pri: float = 0, presumming: int = 0, filename_base: str = "", use_gzip_and_iso8859_1: bool = False, logger: Any = None, read_hk_data: bool = False, keep_data_with_problems: bool = False) -> None:
-        super().__init__(dataset_name, pri, presumming, filename_base, use_gzip_and_iso8859_1, logger)
+    def __init__(
+        self,
+        dataset_name: str = "no name",
+        pri: float = 0,
+        presumming: int = 0,
+        filename_base: str = "",
+        use_gzip_and_iso8859_1: bool = False,
+        logger: Any = None,
+        read_hk_data: bool = False,
+        keep_data_with_problems: bool = False,
+    ) -> None:
+        super().__init__(
+            dataset_name, pri, presumming, filename_base, use_gzip_and_iso8859_1, logger
+        )
 
         # input file suffixes
         self._HEADER_SUFFIX = ".lbl"
@@ -59,15 +71,29 @@ class EDR(RSData):
 
         # required fields and values in the ancillary data to consider the data valid
         # note: it is mandatory to set these listis and they must have the same length
-        self._FIELDS_TO_SEARCH = ["START_TIME", "FILE_RECORDS", "INSTRUMENT_MODE_ID", "MRO:PULSE_REPETITION_INTERVAL", "MRO:PHASE_COMPENSATION_TYPE", "MRO:COMPRESSION_SELECTION_FLAG"]
+        self._FIELDS_TO_SEARCH = [
+            "START_TIME",
+            "FILE_RECORDS",
+            "INSTRUMENT_MODE_ID",
+            "MRO:PULSE_REPETITION_INTERVAL",
+            "MRO:PHASE_COMPENSATION_TYPE",
+            "MRO:COMPRESSION_SELECTION_FLAG",
+        ]
         self._FIELDS_TO_SEARCH_DTYPE = [str, int, str, str, str, str]
-        self._FIELDS_TO_SEARCH_CONSTRAIN = ["", "", "", ["1428 <MICROSECOND>", "1428 <MICROSECONDS>"], "\"NO COMPENSATION\"", "\"STATIC\""]
+        self._FIELDS_TO_SEARCH_CONSTRAIN = [
+            "",
+            "",
+            "",
+            ["1428 <MICROSECOND>", "1428 <MICROSECONDS>"],
+            '"NO COMPENSATION"',
+            '"STATIC"',
+        ]
 
         self._keep_data_with_problems = keep_data_with_problems
         if not self._keep_data_with_problems:
             self._FIELDS_TO_SEARCH += ["DATA_QUALITY_ID"]
             self._FIELDS_TO_SEARCH_DTYPE += [str]
-            self._FIELDS_TO_SEARCH_CONSTRAIN += ["\"0\""]
+            self._FIELDS_TO_SEARCH_CONSTRAIN += ['"0"']
 
         self._N_FIELDS_TO_SEARCH = len(self._FIELDS_TO_SEARCH)
 
@@ -79,39 +105,93 @@ class EDR(RSData):
         self._n_bytes_per_record = 0
 
         # acquisition modes and related parameters
-        self._IMS = [3, 6, 9, 12, 15, 18, 21, 2, 5, 8, 11, 14, 17, 20, 1, 4, 7, 10, 13, 16, 19]
-        self._IM_PRESUMMING = [16, 2, 28, 4, 32, 8, 1, 28, 4, 32, 8, 1, 16, 2, 32, 8, 1, 16, 2, 28, 4]
-        self._IM_N_BITS_PER_BYTE = [4]*7 + [6]*7 + [8]*7
-        self._IM_N_BYTES_PER_RECORD = [1800]*7 + [2700]*7 + [3600]*7
+        self._IMS = [
+            3,
+            6,
+            9,
+            12,
+            15,
+            18,
+            21,
+            2,
+            5,
+            8,
+            11,
+            14,
+            17,
+            20,
+            1,
+            4,
+            7,
+            10,
+            13,
+            16,
+            19,
+        ]
+        self._IM_PRESUMMING = [
+            16,
+            2,
+            28,
+            4,
+            32,
+            8,
+            1,
+            28,
+            4,
+            32,
+            8,
+            1,
+            16,
+            2,
+            32,
+            8,
+            1,
+            16,
+            2,
+            28,
+            4,
+        ]
+        self._IM_N_BITS_PER_BYTE = [4] * 7 + [6] * 7 + [8] * 7
+        self._IM_N_BYTES_PER_RECORD = [1800] * 7 + [2700] * 7 + [3600] * 7
 
         self._N_SAMPLES = 3600
         self._DT = 3 / 80e6
-        self._DCG_DELAY = 11.98e-6      # digital chirp generator delay, used in the calculation of the rxwin opening time
+        self._DCG_DELAY = 11.98e-6  # digital chirp generator delay, used in the calculation of the rxwin opening time
 
         self._header_already_read = False
         self._ancillary_already_read = False
         self._data_already_read = False
 
         # output
-        self._header_data = None    # dictionary, general values (e.g., PRI, presumming)
+        self._header_data = None  # dictionary, general values (e.g., PRI, presumming)
         self._rxwin_steps = None
-        self._geom_data = None      # numpy array, see _read_raw_data_geom_file for the structure
+        self._geom_data = (
+            None  # numpy array, see _read_raw_data_geom_file for the structure
+        )
 
         self._data_type = "raw"
 
-    def _load_from_file(self, mode: str = "full", force_reload: bool = False) -> bool:      # filename_base is set, checked by super
+    def _load_from_file(
+        self, mode: str = "full", force_reload: bool = False
+    ) -> bool:  # filename_base is set, checked by super
         if self._check_file_presence(mode):
             load_ok1 = True
             load_ok2 = True
-            if (mode == "full" or mode == "ancillary") and ((not self._ancillary_already_read) or force_reload):
+            if (mode == "full" or mode == "ancillary") and (
+                (not self._ancillary_already_read) or force_reload
+            ):
                 load_ok1 = self._load_ancillary_data()
-            if (mode == "full" or mode == "data") and ((not self._data_already_read) or force_reload):
+            if (mode == "full" or mode == "data") and (
+                (not self._data_already_read) or force_reload
+            ):
                 load_ok2 = self._load_raw_data()
             return load_ok1 and load_ok2
         return False
 
     def _check_file_presence(self, mode: str = "full") -> bool:
-        self._HEADER_FILENAME = self.filename_base + self._HEADER_SUFFIX      # needed for both ancillary and science data
+        self._HEADER_FILENAME = (
+            self.filename_base + self._HEADER_SUFFIX
+        )  # needed for both ancillary and science data
         if Path(self._HEADER_FILENAME).is_file():
             files_ok1 = True
             files_ok2 = True
@@ -119,7 +199,7 @@ class EDR(RSData):
                 files_ok1 = self._check_file_presence_ancillary()
             if (mode == "full" and files_ok1) or mode == "data":
                 files_ok2 = self._check_file_presence_data()
-            return (files_ok1 and files_ok2)
+            return files_ok1 and files_ok2
         else:
             self.logger.log_messages(log_messages.ERR_MESSAGES["other_file_not-found"])
         return False
@@ -146,7 +226,11 @@ class EDR(RSData):
         main parameters of the acquisition mode
         """
         id = self._IMS.index(im)
-        return self._IM_PRESUMMING[id], self._IM_N_BITS_PER_BYTE[id], self._IM_N_BYTES_PER_RECORD[id]
+        return (
+            self._IM_PRESUMMING[id],
+            self._IM_N_BITS_PER_BYTE[id],
+            self._IM_N_BYTES_PER_RECORD[id],
+        )
 
     def _load_ancillary_data(self, only_header: bool = False) -> bool | None:
         if not self._header_already_read:
@@ -157,23 +241,34 @@ class EDR(RSData):
                 header_data, header_error_field = header_data_grouped
 
                 if header_error_field != "":
-                    err_msg = f'{log_messages.ERR_MESSAGES["discarded"]} {header_error_field} = {header_data[header_error_field]}'
+                    err_msg = f"{log_messages.ERR_MESSAGES['discarded']} {header_error_field} = {header_data[header_error_field]}"
                     self.logger.log_messages(err_msg)
                     return False
                 else:
                     self._header_data = header_data
                     self.n_frames = self._header_data[self._HEADER_FIELD_N_FRAMES]
-                    self.pri = int(self._header_data[self._HEADER_FIELD_PRI].split(" ")[0])/1e6
+                    self.pri = (
+                        int(self._header_data[self._HEADER_FIELD_PRI].split(" ")[0])
+                        / 1e6
+                    )
 
                     im = self._header_data[self._HEADER_FIELD_IM]
                     if im[:2] == "SS":
                         im = int(im[2:])
-                        self.presumming, self._n_bits_per_byte, self._n_bytes_per_record = self._decode_im(im)
+                        (
+                            self.presumming,
+                            self._n_bits_per_byte,
+                            self._n_bytes_per_record,
+                        ) = self._decode_im(im)
                     else:
-                        self.logger.log_messages(log_messages.ERR_MESSAGES["header_file_no_ss"])
+                        self.logger.log_messages(
+                            log_messages.ERR_MESSAGES["header_file_no_ss"]
+                        )
                         return False
             else:
-                self.logger.log_messages(log_messages.ERR_MESSAGES["header_file_generic"])
+                self.logger.log_messages(
+                    log_messages.ERR_MESSAGES["header_file_generic"]
+                )
                 return False
             self._header_already_read = True
 
@@ -181,7 +276,9 @@ class EDR(RSData):
             # orbit data parsing
             geom_data = self._read_raw_data_geom_file()
             if geom_data is None:
-                self.logger.log_messages(log_messages.ERR_MESSAGES["orbit_file_generic"])
+                self.logger.log_messages(
+                    log_messages.ERR_MESSAGES["orbit_file_generic"]
+                )
                 return False
             else:
                 self._geom_data = geom_data
@@ -191,34 +288,67 @@ class EDR(RSData):
 
     def _read_raw_data_header(self) -> tuple[dict[str, Any], str] | None:
         try:
-            with self.open_function(self._HEADER_FILENAME, mode="rt", encoding=self.encoding) as fp:
+            with self.open_function(
+                self._HEADER_FILENAME, mode="rt", encoding=self.encoding
+            ) as fp:
                 header_data = dict()
                 error_field = ""
                 i_field_to_search = 0
                 line = fp.readline()
                 while line and i_field_to_search < self._N_FIELDS_TO_SEARCH:
                     if line[0] != "/" and len(line) > 1:
-                        unpacked_line = line.split('=')
+                        unpacked_line = line.split("=")
                         if len(unpacked_line) == 2:
                             field, value = unpacked_line[0:2]
                             value = value.strip()
-                            if field.strip() == self._FIELDS_TO_SEARCH[i_field_to_search]:
-                                value = self._FIELDS_TO_SEARCH_DTYPE[i_field_to_search](value)
-                                header_data[self._FIELDS_TO_SEARCH[i_field_to_search]] = value
-                                if self._FIELDS_TO_SEARCH_CONSTRAIN[i_field_to_search] != "":
-                                    if isinstance(self._FIELDS_TO_SEARCH_CONSTRAIN[i_field_to_search], list):
-                                        if value not in self._FIELDS_TO_SEARCH_CONSTRAIN[i_field_to_search]:
-                                            error_field = self._FIELDS_TO_SEARCH[i_field_to_search]
+                            if (
+                                field.strip()
+                                == self._FIELDS_TO_SEARCH[i_field_to_search]
+                            ):
+                                value = self._FIELDS_TO_SEARCH_DTYPE[i_field_to_search](
+                                    value
+                                )
+                                header_data[
+                                    self._FIELDS_TO_SEARCH[i_field_to_search]
+                                ] = value
+                                if (
+                                    self._FIELDS_TO_SEARCH_CONSTRAIN[i_field_to_search]
+                                    != ""
+                                ):
+                                    if isinstance(
+                                        self._FIELDS_TO_SEARCH_CONSTRAIN[
+                                            i_field_to_search
+                                        ],
+                                        list,
+                                    ):
+                                        if (
+                                            value
+                                            not in self._FIELDS_TO_SEARCH_CONSTRAIN[
+                                                i_field_to_search
+                                            ]
+                                        ):
+                                            error_field = self._FIELDS_TO_SEARCH[
+                                                i_field_to_search
+                                            ]
                                             break
-                                    elif value != self._FIELDS_TO_SEARCH_CONSTRAIN[i_field_to_search]:
-                                        error_field = self._FIELDS_TO_SEARCH[i_field_to_search]
+                                    elif (
+                                        value
+                                        != self._FIELDS_TO_SEARCH_CONSTRAIN[
+                                            i_field_to_search
+                                        ]
+                                    ):
+                                        error_field = self._FIELDS_TO_SEARCH[
+                                            i_field_to_search
+                                        ]
                                         break
 
                                 i_field_to_search += 1
                     line = fp.readline()
 
                 if len(header_data) != self._N_FIELDS_TO_SEARCH and error_field == "":
-                    self.logger.log_messages(log_messages.ERR_MESSAGES["header_file_generic"])
+                    self.logger.log_messages(
+                        log_messages.ERR_MESSAGES["header_file_generic"]
+                    )
                 else:
                     return header_data, error_field
         except OSError:
@@ -228,7 +358,9 @@ class EDR(RSData):
         return None
 
     def _read_raw_data_geom_file(self) -> npt.NDArray | None:
-        dt = np.dtype([("SCET_BLOCK_WHOLE", ">u4"),
+        dt = np.dtype(
+            [
+                ("SCET_BLOCK_WHOLE", ">u4"),
                 ("SCET_BLOCK_FRAC", ">u2"),
                 ("EPHEMERIS_TIME", ">f8"),
                 ("GEOMETRY_EPOCH", np.void, 23),
@@ -265,7 +397,9 @@ class EDR(RSData):
                 ("TX_TEMP", ">f4"),
                 ("TX_LEV", ">f4"),
                 ("TX_CURR", ">f4"),
-                ("CORRUPTED_DATA_FLAG", ">i2")])
+                ("CORRUPTED_DATA_FLAG", ">i2"),
+            ]
+        )
         try:
             with self.open_function(self._AUX_FILENAME, mode="rb") as fp:
                 aux_file = fp.read()
@@ -283,20 +417,24 @@ class EDR(RSData):
         if not self._header_already_read:
             self._load_ancillary_data(only_header=True)
 
-        dt = np.dtype([("SKIP1", np.void, 178),
+        dt = np.dtype(
+            [
+                ("SKIP1", np.void, 178),
                 ("RECEIVE_WINDOW_OPENING_TIME", ">f4"),
                 ("SKIP2", np.void, 4),
-                ("ECHO_SAMPLES", ">i1", self._n_bytes_per_record)])
+                ("ECHO_SAMPLES", ">i1", self._n_bytes_per_record),
+            ]
+        )
 
         frame_count = -1
         if start_frame < 0 or (end_frame != -1 and start_frame > end_frame):
             self.logger.log_messages(log_messages.ERR_MESSAGES["data_frame-limits"])
             return None
         elif end_frame != -1:
-            frame_count = end_frame-start_frame
+            frame_count = end_frame - start_frame
         try:
             frame_range = np.arange(self.n_frames)
-            with open(self._DATA_FILENAME, 'rb') as fp:
+            with open(self._DATA_FILENAME, "rb") as fp:
                 fp.seek(start_frame * dt.itemsize)
                 raw_file = fp.read()
                 raw_data_np = np.frombuffer(raw_file, dtype=dt, count=frame_count)
@@ -308,7 +446,7 @@ class EDR(RSData):
                     raw_data = np.zeros([self._N_SAMPLES, self.n_frames])
 
                     unpack_str = f"{self._N_SAMPLES}*int:{self._n_bits_per_byte}"
-                    for i_f in frame_range:            # using "for" to avoid memory problems. If no memory limits, a single BitArray could handle the whole raw dataset
+                    for i_f in frame_range:  # using "for" to avoid memory problems. If no memory limits, a single BitArray could handle the whole raw dataset
                         tmpbs = bs.BitArray(bytes(echo_samples_raw[:, i_f]))
                         raw_data[:, i_f] = tmpbs.unpack(unpack_str)
 
@@ -331,28 +469,65 @@ class EDR(RSData):
         interpolated to match 1:skip the frames of the raw data:
         "time_offset_s", "rxwin_time_s", "Lat", "Lon", "Radius", "Vtang", "Vradial", "X", "Y", "Z", "Roll", "Pitch", "Yaw", "SZA"
         """
-        geom_fields_to_include = "SUB_SC_PLANETOCENTRIC_LATITUDE", "SUB_SC_EAST_LONGITUDE", "MARS_SC_TANGENTIAL_VELOCITY", "MARS_SC_RADIAL_VELOCITY", "X_MARS_SC_POSITION_VECTOR", "Y_MARS_SC_POSITION_VECTOR", "Z_MARS_SC_POSITION_VECTOR", "SC_ROLL_ANGLE", "SC_PITCH_ANGLE", "SC_YAW_ANGLE", "SOLAR_ZENITH_ANGLE"
-        geom_fields_to_include_new_names = ["Lat", "Lon", "Vtang", "Vradial", "X", "Y", "Z", "Roll", "Pitch", "Yaw", "SZA"]
+        geom_fields_to_include = (
+            "SUB_SC_PLANETOCENTRIC_LATITUDE",
+            "SUB_SC_EAST_LONGITUDE",
+            "MARS_SC_TANGENTIAL_VELOCITY",
+            "MARS_SC_RADIAL_VELOCITY",
+            "X_MARS_SC_POSITION_VECTOR",
+            "Y_MARS_SC_POSITION_VECTOR",
+            "Z_MARS_SC_POSITION_VECTOR",
+            "SC_ROLL_ANGLE",
+            "SC_PITCH_ANGLE",
+            "SC_YAW_ANGLE",
+            "SOLAR_ZENITH_ANGLE",
+        )
+        geom_fields_to_include_new_names = [
+            "Lat",
+            "Lon",
+            "Vtang",
+            "Vradial",
+            "X",
+            "Y",
+            "Z",
+            "Roll",
+            "Pitch",
+            "Yaw",
+            "SZA",
+        ]
         geom_fields_to_convert_to_m = ["Radius", "X", "Y", "Z"]
         if self._ancillary_already_read:
             orbit_data = dict()
 
-            orbit_data["time_offset_s"] = (self._geom_data["SCET_BLOCK_WHOLE"] + self._geom_data["SCET_BLOCK_FRAC"]*(2**-16))[::skip]
+            orbit_data["time_offset_s"] = (
+                self._geom_data["SCET_BLOCK_WHOLE"]
+                + self._geom_data["SCET_BLOCK_FRAC"] * (2**-16)
+            )[::skip]
             orbit_data["time_offset_s"] -= orbit_data["time_offset_s"][0]
 
             for i_f, field in enumerate(geom_fields_to_include):
-                orbit_data[geom_fields_to_include_new_names[i_f]] = self._geom_data[field][::skip].astype("float64")
-            orbit_data["Radius"] = CoordinateConverter.to_radius_from_xyz(orbit_data["X"], orbit_data["Y"], orbit_data["Z"])
+                orbit_data[geom_fields_to_include_new_names[i_f]] = self._geom_data[
+                    field
+                ][::skip].astype("float64")
+            orbit_data["Radius"] = CoordinateConverter.to_radius_from_xyz(
+                orbit_data["X"], orbit_data["Y"], orbit_data["Z"]
+            )
 
             for field in geom_fields_to_convert_to_m:
-                orbit_data[field] *= 1000.
+                orbit_data[field] *= 1000.0
 
             # rxwin_time is available only in raw data
             # if the raw data has not been read yet, return zeros
             if self._data_already_read:
-                orbit_data["rxwin_time_s"] = self._rxwin_steps[::skip]*self._DT - self._DCG_DELAY + (0 if self.pri > 1500e-6 else self.pri)
+                orbit_data["rxwin_time_s"] = (
+                    self._rxwin_steps[::skip] * self._DT
+                    - self._DCG_DELAY
+                    + (0 if self.pri > 1500e-6 else self.pri)
+                )
             else:
-                print("WARNING: rxwin_time is contained in the raw data, which has not been yet downloaded. Returning zeros.")
+                print(
+                    "WARNING: rxwin_time is contained in the raw data, which has not been yet downloaded. Returning zeros."
+                )
                 orbit_data["rxwin_time_s"] = np.zeros(orbit_data["Radius"].shape)
 
             orbit_data["dt"] = self._DT

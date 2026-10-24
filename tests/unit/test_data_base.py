@@ -41,10 +41,12 @@ class _MinimalData(RSData):
     """Minimal concrete reader used to exercise the RSData base behavior."""
 
     def __init__(self, **kwargs: object) -> None:
-        super().__init__(**kwargs)          # type: ignore[arg-type]
+        super().__init__(**kwargs)  # type: ignore[arg-type]
         self.load_called_with: tuple[str | None, bool] | None = None
 
-    def _load_from_file(self, mode: str | None = None, force_reload: bool = False) -> bool:
+    def _load_from_file(
+        self, mode: str | None = None, force_reload: bool = False
+    ) -> bool:
         """Records the dispatch arguments and reports success."""
         self.load_called_with = (mode, force_reload)
         return True
@@ -95,7 +97,7 @@ def test_data_setter_rejected() -> None:
     """Checks that assigning the data property is refused and leaves the
     internal matrix untouched."""
     d = _MinimalData()
-    d.data = np.ones((2, 2))            # type: ignore[assignment]
+    d.data = np.ones((2, 2))  # type: ignore[assignment]
     assert d._data is None
 
 
@@ -107,7 +109,7 @@ def test_orbit_data_property_and_external_install() -> None:
     external = {"Lat": np.array([1.0])}
     d.set_orbit_data_from_ext(external)
     assert d.orbit_data is external
-    d.orbit_data = {}                   # type: ignore[assignment]
+    d.orbit_data = {}  # type: ignore[assignment]
     assert d.orbit_data is external
 
 
@@ -126,7 +128,9 @@ def test_str_with_and_without_filename() -> None:
     d = _MinimalData(dataset_name="obs", pri=1428e-6, presumming=16)
     assert str(d) == "obs, n_frames=0, PRI=1428.0 us, presum=16"
     d.filename_base = "/some/base"
-    assert str(d) == "obs, n_frames=0, PRI=1428.0 us, presum=16, base filename: /some/base"
+    assert (
+        str(d) == "obs, n_frames=0, PRI=1428.0 us, presum=16, base filename: /some/base"
+    )
 
 
 def test_load_without_filename(capsys: pytest.CaptureFixture[str]) -> None:

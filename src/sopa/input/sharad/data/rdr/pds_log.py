@@ -28,9 +28,13 @@ keyed by error condition.
 ERR_MESSAGES = dict()
 ERR_MESSAGES["header_file_generic"] = "ERROR: problem while parsing header file."
 ERR_MESSAGES["header_file_read"] = "ERROR: cannot read or cannot parse header file."
-ERR_MESSAGES["header_file_decode"] = "ERROR: cannot decode header file. Try --use_gzip option."
+ERR_MESSAGES["header_file_decode"] = (
+    "ERROR: cannot decode header file. Try --use_gzip option."
+)
 ERR_MESSAGES["header_file_no_ss"] = "ERROR: the acquisition mode is not SS."
-ERR_MESSAGES["other_file_not-found"] = "ERROR: label and/or aux and/or data file not present."
+ERR_MESSAGES["other_file_not-found"] = (
+    "ERROR: label and/or aux and/or data file not present."
+)
 ERR_MESSAGES["discarded"] = "--> discarded, header field not compliant:"
 ERR_MESSAGES["data_frame-limits"] = "ERROR: start_frame and/or end_frame not valid."
 ERR_MESSAGES["data_read"] = "ERROR: could not read data."

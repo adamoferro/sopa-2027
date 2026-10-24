@@ -33,7 +33,9 @@ import pytest
 from sopa.log.log import _logger_base, fake_logger, logger
 
 
-def test_logger_buffers_messages_without_printing(capsys: pytest.CaptureFixture[str]) -> None:
+def test_logger_buffers_messages_without_printing(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     """Checks that a non-verbose logger buffers messages without console output."""
     lg = logger(verbose=False)
     lg.log_messages("first")
@@ -63,7 +65,9 @@ def test_log_write_appends_and_empties_buffer(tmp_path: Path) -> None:
     assert log_file.read_text() == "one\ntwo\n"
 
 
-def test_log_write_ioerror_keeps_buffer(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_log_write_ioerror_keeps_buffer(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Checks that an unwritable destination reports an error and keeps the
     buffer for a later attempt."""
     lg = logger(verbose=False)

@@ -21,8 +21,7 @@
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
 
-"""SHARAD instrument parameters.
-"""
+"""SHARAD instrument parameters."""
 
 from sopa.input.instrument_base import RSInstrument
 
@@ -31,4 +30,4 @@ class SHARAD(RSInstrument):
     """Fixed-parameter definition of the SHARAD instrument: 20 MHz center frequency, 10 MHz bandwidth, 80/3 MHz fast-time sampling frequency, 85.05 us chirp duration, 3397 m/s reference platform velocity."""
 
     def __init__(self) -> None:
-        super().__init__("SHARAD", 20e6, 10e6, 80e6/3., 85.05e-6, 3397.)
+        super().__init__("SHARAD", 20e6, 10e6, 80e6 / 3.0, 85.05e-6, 3397.0)

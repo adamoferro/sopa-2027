@@ -58,7 +58,9 @@ def test_roundtrip_dtypes(tmp_path: Path, dtype_name: str) -> None:
 def test_roundtrip_complex(tmp_path: Path) -> None:
     """Checks the complex64/complex128 roundtrip with complex_output set."""
     rng = np.random.default_rng(6)
-    data = (rng.standard_normal((4, 3)) + 1j * rng.standard_normal((4, 3))).astype("complex64")
+    data = (rng.standard_normal((4, 3)) + 1j * rng.standard_normal((4, 3))).astype(
+        "complex64"
+    )
     base = tmp_path / "rtc"
     assert envi.write(str(base), data, complex_output=True) is True
     read_back = envi.read(str(base))
@@ -161,7 +163,7 @@ def test_header_parser_skips_multiline_values(tmp_path: Path) -> None:
     hdr = tmp_path / "h.hdr"
     hdr.write_text(
         "ENVI\n"
-        'description = {\n  a multi-line,\n  example value\n}\n'
+        "description = {\n  a multi-line,\n  example value\n}\n"
         "Samples = 4\n"
         "Lines   = 2\n"
     )

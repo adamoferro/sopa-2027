@@ -42,7 +42,7 @@ N_FRAMES = 12
 N_HALF_APERTURE = 2
 FRAME_START = N_HALF_APERTURE
 FRAME_END = 10
-N_SIMULATED = FRAME_END - FRAME_START        # arange(start, end) with skip 1
+N_SIMULATED = FRAME_END - FRAME_START  # arange(start, end) with skip 1
 
 
 def _dem() -> MOLA128:
@@ -58,18 +58,37 @@ def _orbit_data() -> dict[str, npt.NDArray[np.float64] | float]:
     cc = MARS_IAU2000()
     lat = np.linspace(1.1, 1.3, N_FRAMES)
     lon = np.linspace(0.3, 0.8, N_FRAMES)
-    radius = np.full(N_FRAMES, 3646190.0) + 300.0 * np.sin(np.linspace(0.0, np.pi, N_FRAMES))
+    radius = np.full(N_FRAMES, 3646190.0) + 300.0 * np.sin(
+        np.linspace(0.0, np.pi, N_FRAMES)
+    )
     x, y, z = cc.to_xyz_from_latlon_and_radius(lat, lon, radius)
-    return {"Lat": lat, "Lon": lon, "X": x, "Y": y, "Z": z, "Radius": radius,
-            "rxwin_time_s": np.zeros(N_FRAMES), "dt": 37.5e-9}
+    return {
+        "Lat": lat,
+        "Lon": lon,
+        "X": x,
+        "Y": y,
+        "Z": z,
+        "Radius": radius,
+        "rxwin_time_s": np.zeros(N_FRAMES),
+        "dt": 37.5e-9,
+    }
 
 
 def _make_sim(simulate_chirp: bool = False, instr_obj: object = None) -> dRSsim:
     """Builds a dRSsim instance with the across/along-track grids shrunk to
     keep the unit run fast (the matrices are per-instance attributes)."""
-    sim = dRSsim(geom_obj=MARS_IAU2000(), dem_obj=_dem(),
-                 param_obj=SimulatorParameters(frame_start=FRAME_START, frame_end=FRAME_END, frame_half_aperture=N_HALF_APERTURE),
-                 n_processes=1, simulate_chirp=simulate_chirp, instr_obj=instr_obj)
+    sim = dRSsim(
+        geom_obj=MARS_IAU2000(),
+        dem_obj=_dem(),
+        param_obj=SimulatorParameters(
+            frame_start=FRAME_START,
+            frame_end=FRAME_END,
+            frame_half_aperture=N_HALF_APERTURE,
+        ),
+        n_processes=1,
+        simulate_chirp=simulate_chirp,
+        instr_obj=instr_obj,
+    )
     alt = np.arange(-250.0, 250.0 + 25.0, 25.0)
     act = np.arange(-2500.0, 2500.0 + 50.0, 50.0)
     sim.alt_sim_matrix = np.array([alt]).T * np.ones([1, len(act)])
@@ -87,7 +106,12 @@ def test_constructor_requires_instrument_for_default_chirp() -> None:
 def test_constructor_defaults() -> None:
     """Checks the constructor defaults: smoothing sigma (half the sfRSsim
     one), spacings, grid extents and the point-grid matrix shapes."""
-    sim = dRSsim(geom_obj=None, dem_obj=None, param_obj=SimulatorParameters(), simulate_chirp=False)
+    sim = dRSsim(
+        geom_obj=None,
+        dem_obj=None,
+        param_obj=SimulatorParameters(),
+        simulate_chirp=False,
+    )
     assert sim.gaussian_filter_sigma == 4
     assert sim.alt_sim_spacing == 50
     assert sim.act_sim_spacing == 50
@@ -108,14 +132,28 @@ def test_simulation_counts_points() -> None:
     sim = _make_sim()
     result = sim.simulate(_orbit_data())
     assert result is not None
-    sim_image, uncert_image, first_return_lats, first_return_lons, gd_min, gd_max, roi_pos = result
+    (
+        sim_image,
+        uncert_image,
+        first_return_lats,
+        first_return_lons,
+        gd_min,
+        gd_max,
+        roi_pos,
+    ) = result
     assert sim_image.shape == (sim_image.shape[0], N_SIMULATED)
-    assert np.all(sim_image == np.round(sim_image))       # one count per grid point, no facet weighting
+    assert np.all(
+        sim_image == np.round(sim_image)
+    )  # one count per grid point, no facet weighting
     assert np.sum(sim_image) > 0
     peak = int(np.argmax(sim_image[:, 0]))
-    assert 150 <= peak <= 260            # the unset-rxwin branch places the surface top at sample 200
+    assert (
+        150 <= peak <= 260
+    )  # the unset-rxwin branch places the surface top at sample 200
     assert np.all(uncert_image == 0)
-    assert np.all(np.isfinite(first_return_lats)) and np.all(np.isfinite(first_return_lons))
+    assert np.all(np.isfinite(first_return_lats)) and np.all(
+        np.isfinite(first_return_lons)
+    )
     assert isinstance(roi_pos, tuple) and len(roi_pos) == 2
 
 

@@ -50,27 +50,61 @@ DT = 3 / 80e6
 DCG_DELAY = 11.98e-6
 RXWIN_STEP_0 = 100000.0
 
-GEOM_DTYPE = np.dtype([("SCET_BLOCK_WHOLE", ">u4"), ("SCET_BLOCK_FRAC", ">u2"),
-                       ("EPHEMERIS_TIME", ">f8"), ("GEOMETRY_EPOCH", np.void, 23), ("SOLAR_LONGITUDE", ">f8"),
-                       ("ORBIT_NUMBER", ">i4"), ("X_MARS_SC_POSITION_VECTOR", ">f8"), ("Y_MARS_SC_POSITION_VECTOR", ">f8"),
-                       ("Z_MARS_SC_POSITION_VECTOR", ">f8"), ("SPACECRAFT_ALTITUDE", ">f8"), ("SUB_SC_EAST_LONGITUDE", ">f8"),
-                       ("SUB_SC_PLANETOCENTRIC_LATITUDE", ">f8"), ("SUB_SC_PLANETOGRAPHIC_LATITUDE", ">f8"),
-                       ("X_MARS_SC_VELOCITY_VECTOR", ">f8"), ("Y_MARS_SC_VELOCITY_VECTOR", ">f8"), ("Z_MARS_SC_VELOCITY_VECTOR", ">f8"),
-                       ("MARS_SC_RADIAL_VELOCITY", ">f8"), ("MARS_SC_TANGENTIAL_VELOCITY", ">f8"), ("LOCAL_TRUE_SOLAR_TIME", ">f8"),
-                       ("SOLAR_ZENITH_ANGLE", ">f8"), ("SC_PITCH_ANGLE", ">f8"), ("SC_YAW_ANGLE", ">f8"), ("SC_ROLL_ANGLE", ">f8"),
-                       ("MRO_SAMX_INNER_GIMBAL_ANGLE", ">f8"), ("MRO_SAMX_OUTER_GIMBAL_ANGLE", ">f8"),
-                       ("MRO_SAPX_INNER_GIMBAL_ANGLE", ">f8"), ("MRO_SAPX_OUTER_GIMBAL_ANGLE", ">f8"),
-                       ("MRO_HGA_INNER_GIMBAL_ANGLE", ">f8"), ("MRO_HGA_OUTER_GIMBAL_ANGLE", ">f8"),
-                       ("DES_TEMP", ">f4"), ("DES_5V", ">f4"), ("DES_12V", ">f4"), ("DES_2V5", ">f4"),
-                       ("RX_TEMP", ">f4"), ("TX_TEMP", ">f4"), ("TX_LEV", ">f4"), ("TX_CURR", ">f4"),
-                       ("CORRUPTED_DATA_FLAG", ">i2")])
+GEOM_DTYPE = np.dtype(
+    [
+        ("SCET_BLOCK_WHOLE", ">u4"),
+        ("SCET_BLOCK_FRAC", ">u2"),
+        ("EPHEMERIS_TIME", ">f8"),
+        ("GEOMETRY_EPOCH", np.void, 23),
+        ("SOLAR_LONGITUDE", ">f8"),
+        ("ORBIT_NUMBER", ">i4"),
+        ("X_MARS_SC_POSITION_VECTOR", ">f8"),
+        ("Y_MARS_SC_POSITION_VECTOR", ">f8"),
+        ("Z_MARS_SC_POSITION_VECTOR", ">f8"),
+        ("SPACECRAFT_ALTITUDE", ">f8"),
+        ("SUB_SC_EAST_LONGITUDE", ">f8"),
+        ("SUB_SC_PLANETOCENTRIC_LATITUDE", ">f8"),
+        ("SUB_SC_PLANETOGRAPHIC_LATITUDE", ">f8"),
+        ("X_MARS_SC_VELOCITY_VECTOR", ">f8"),
+        ("Y_MARS_SC_VELOCITY_VECTOR", ">f8"),
+        ("Z_MARS_SC_VELOCITY_VECTOR", ">f8"),
+        ("MARS_SC_RADIAL_VELOCITY", ">f8"),
+        ("MARS_SC_TANGENTIAL_VELOCITY", ">f8"),
+        ("LOCAL_TRUE_SOLAR_TIME", ">f8"),
+        ("SOLAR_ZENITH_ANGLE", ">f8"),
+        ("SC_PITCH_ANGLE", ">f8"),
+        ("SC_YAW_ANGLE", ">f8"),
+        ("SC_ROLL_ANGLE", ">f8"),
+        ("MRO_SAMX_INNER_GIMBAL_ANGLE", ">f8"),
+        ("MRO_SAMX_OUTER_GIMBAL_ANGLE", ">f8"),
+        ("MRO_SAPX_INNER_GIMBAL_ANGLE", ">f8"),
+        ("MRO_SAPX_OUTER_GIMBAL_ANGLE", ">f8"),
+        ("MRO_HGA_INNER_GIMBAL_ANGLE", ">f8"),
+        ("MRO_HGA_OUTER_GIMBAL_ANGLE", ">f8"),
+        ("DES_TEMP", ">f4"),
+        ("DES_5V", ">f4"),
+        ("DES_12V", ">f4"),
+        ("DES_2V5", ">f4"),
+        ("RX_TEMP", ">f4"),
+        ("TX_TEMP", ">f4"),
+        ("TX_LEV", ">f4"),
+        ("TX_CURR", ">f4"),
+        ("CORRUPTED_DATA_FLAG", ">i2"),
+    ]
+)
 
 LAT = np.linspace(0.9, 1.1, N_FRAMES)
 LON = np.linspace(0.5, 0.7, N_FRAMES)
 RADIUS = np.full(N_FRAMES, 3646190.0)
 
 
-def _write_label(directory: Path, pri_text: str = f"{PRI_US} <MICROSECOND>", im_text: str = "SS3", quality_line: str = 'DATA_QUALITY_ID                = "0"', n_frames: int = N_FRAMES) -> Path:
+def _write_label(
+    directory: Path,
+    pri_text: str = f"{PRI_US} <MICROSECOND>",
+    im_text: str = "SS3",
+    quality_line: str = 'DATA_QUALITY_ID                = "0"',
+    n_frames: int = N_FRAMES,
+) -> Path:
     """Writes a PDS-like label with the fields in the order searched by the
     reader, allowing single-field overrides for the rejection tests."""
     lines = [
@@ -129,7 +163,9 @@ def _write_science(directory: Path) -> npt.NDArray[np.int64]:
 def _make_edr(directory: Path) -> tuple[EDR, logger]:
     """Builds a PDS EDR reader with an in-memory logger on the synthetic base."""
     lg = logger(verbose=False)
-    return EDR(dataset_name="test", filename_base=str(directory / "e_test_a"), logger=lg), lg
+    return EDR(
+        dataset_name="test", filename_base=str(directory / "e_test_a"), logger=lg
+    ), lg
 
 
 @pytest.fixture()
@@ -144,10 +180,21 @@ def dataset(tmp_path: Path) -> tuple[Path, npt.NDArray[np.int64]]:
 def test_log_message_tables_complete() -> None:
     """Checks that the reader's log-message module exposes the message keys
     used by the reader, each mapped to a non-empty string."""
-    for key in ["header_file_generic", "header_file_read", "header_file_decode", "header_file_no_ss",
-                "other_file_not-found", "discarded", "data_frame-limits", "data_read"]:
+    for key in [
+        "header_file_generic",
+        "header_file_read",
+        "header_file_decode",
+        "header_file_no_ss",
+        "other_file_not-found",
+        "discarded",
+        "data_frame-limits",
+        "data_read",
+    ]:
         assert key in pds_log.ERR_MESSAGES
-        assert isinstance(pds_log.ERR_MESSAGES[key], str) and pds_log.ERR_MESSAGES[key] != ""
+        assert (
+            isinstance(pds_log.ERR_MESSAGES[key], str)
+            and pds_log.ERR_MESSAGES[key] != ""
+        )
 
 
 def test_decode_im_table() -> None:
@@ -171,7 +218,9 @@ def test_load_full(dataset: tuple[Path, npt.NDArray[np.int64]]) -> None:
     assert d._n_bytes_per_record == N_BYTES_PER_RECORD
 
 
-def test_4bit_unpack_and_decompression(dataset: tuple[Path, npt.NDArray[np.int64]]) -> None:
+def test_4bit_unpack_and_decompression(
+    dataset: tuple[Path, npt.NDArray[np.int64]],
+) -> None:
     """Checks the 4-bit unpacking plus static decompression against the known
     sample values (factorL = ceil(log2 16) = 4, factorS = 8)."""
     directory, true_ints = dataset
@@ -200,7 +249,9 @@ def test_orbit_data_fields(dataset: tuple[Path, npt.NDArray[np.int64]]) -> None:
     np.testing.assert_allclose(orbit["X"], x, rtol=1e-12)
     np.testing.assert_allclose(orbit["Y"], y, rtol=1e-12)
     np.testing.assert_allclose(orbit["Z"], z, rtol=1e-12)
-    np.testing.assert_allclose(orbit["Radius"], np.sqrt(x * x + y * y + z * z), rtol=1e-12)
+    np.testing.assert_allclose(
+        orbit["Radius"], np.sqrt(x * x + y * y + z * z), rtol=1e-12
+    )
     assert orbit["dt"] == DT
 
 
@@ -217,7 +268,9 @@ def test_rxwin_time(dataset: tuple[Path, npt.NDArray[np.int64]]) -> None:
     np.testing.assert_allclose(orbit["rxwin_time_s"], expected)
 
 
-def test_ancillary_only_then_data(dataset: tuple[Path, npt.NDArray[np.int64]], capsys: pytest.CaptureFixture[str]) -> None:
+def test_ancillary_only_then_data(
+    dataset: tuple[Path, npt.NDArray[np.int64]], capsys: pytest.CaptureFixture[str]
+) -> None:
     """Checks the staged load: ancillary-only leaves the data unread and the
     orbit data with zero receive-window times (with a warning); a subsequent
     data load fills them in."""
@@ -245,7 +298,9 @@ def test_header_bad_pri_rejected(tmp_path: Path) -> None:
     _write_ancillary(tmp_path)
     d, lg = _make_edr(tmp_path)
     assert d.load(mode="ancillary") is False
-    assert any("discarded" in m and "PULSE_REPETITION_INTERVAL" in m for m in lg.LOG_MESSAGES)
+    assert any(
+        "discarded" in m and "PULSE_REPETITION_INTERVAL" in m for m in lg.LOG_MESSAGES
+    )
 
 
 def test_header_bad_quality_id_rejected(tmp_path: Path) -> None:

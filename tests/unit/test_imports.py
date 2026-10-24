@@ -44,7 +44,8 @@ def _library_module_names() -> list[str]:
     """Returns the dotted names of all non-__init__ modules of the sopa package."""
     package_dir = Path(sopa.__file__).parent
     return sorted(
-        "sopa." + p.relative_to(package_dir).with_suffix("").as_posix().replace("/", ".")
+        "sopa."
+        + p.relative_to(package_dir).with_suffix("").as_posix().replace("/", ".")
         for p in package_dir.rglob("*.py")
         if p.name != "__init__.py"
     )

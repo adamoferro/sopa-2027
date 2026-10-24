@@ -19,5 +19,4 @@
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
 
-"""Synthetic-aperture focusers for SHARAD raw echo data.
-"""
+"""Synthetic-aperture focusers for SHARAD raw echo data."""

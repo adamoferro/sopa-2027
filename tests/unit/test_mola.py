@@ -57,7 +57,9 @@ def dem_file(tmp_path: Path) -> tuple[Path, npt.NDArray[np.int16]]:
 
 
 @pytest.fixture()
-def dem(dem_file: tuple[Path, npt.NDArray[np.int16]]) -> tuple[MOLA128, npt.NDArray[np.int16]]:
+def dem(
+    dem_file: tuple[Path, npt.NDArray[np.int16]],
+) -> tuple[MOLA128, npt.NDArray[np.int16]]:
     """Reads the synthetic DEM file through MOLA128."""
     base, values = dem_file
     m = MOLA128(filename_base=str(base))
@@ -112,7 +114,9 @@ def test_read_from_envi(dem: tuple[MOLA128, npt.NDArray[np.int16]]) -> None:
     assert m._MOLA_MAX_LONG == pytest.approx(DEM_COLS / 128.0)
 
 
-def test_read_twice_warns_and_skips(dem_file: tuple[Path, npt.NDArray[np.int16]], capsys: pytest.CaptureFixture[str]) -> None:
+def test_read_twice_warns_and_skips(
+    dem_file: tuple[Path, npt.NDArray[np.int16]], capsys: pytest.CaptureFixture[str]
+) -> None:
     """Checks that a second read is refused with a warning and returns False."""
     base, _ = dem_file
     m = MOLA128(filename_base=str(base))
@@ -168,7 +172,9 @@ def test_to_xy_from_ll_as_float(dem: tuple[MOLA128, npt.NDArray[np.int16]]) -> N
     assert x[0] == pytest.approx(64.0) and y[0] == pytest.approx(64.0)
 
 
-def test_to_xy_from_ll_as_float_scalar_crashes(dem: tuple[MOLA128, npt.NDArray[np.int16]]) -> None:
+def test_to_xy_from_ll_as_float_scalar_crashes(
+    dem: tuple[MOLA128, npt.NDArray[np.int16]],
+) -> None:
     """Documents the current behavior of the float variant with scalar float
     inputs: the conversion produces plain Python floats, so the internal
     shape check fails with AttributeError (inherited behavior; flagged for
@@ -178,7 +184,9 @@ def test_to_xy_from_ll_as_float_scalar_crashes(dem: tuple[MOLA128, npt.NDArray[n
         m.to_XY_from_LL(87.5, 0.5, return_as_float=True)
 
 
-def test_to_xy_clamps_and_masks_out_of_range(dem: tuple[MOLA128, npt.NDArray[np.int16]]) -> None:
+def test_to_xy_clamps_and_masks_out_of_range(
+    dem: tuple[MOLA128, npt.NDArray[np.int16]],
+) -> None:
     """Checks that out-of-coverage points are masked and clamped to the
     upper-left pixel. The longitude at the right edge (x == n_cols) is wrapped
     to column 0 before the mask is computed, so it is NOT masked and silently
@@ -215,7 +223,7 @@ def test_radius_lookup_dummy_outside_coverage() -> None:
     construction."""
     values = np.ones((8, 8), dtype="int16")
     m = MOLA128(image=values, dummy_value=77)
-    radii = m.get_dem_radius_from_lat_lon(50.0, 0.0)      # below the DEM southern limit
+    radii = m.get_dem_radius_from_lat_lon(50.0, 0.0)  # below the DEM southern limit
     assert radii is not None
     assert radii[0] == 77
 
@@ -238,7 +246,9 @@ def test_radius_lookup_before_load(capsys: pytest.CaptureFixture[str]) -> None:
     assert "ERROR" in capsys.readouterr().out
 
 
-def test_reset(dem: tuple[MOLA128, npt.NDArray[np.int16]], capsys: pytest.CaptureFixture[str]) -> None:
+def test_reset(
+    dem: tuple[MOLA128, npt.NDArray[np.int16]], capsys: pytest.CaptureFixture[str]
+) -> None:
     """Checks that reset frees the DEM image and later lookups report the
     not-loaded state."""
     m, _ = dem

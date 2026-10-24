@@ -48,10 +48,18 @@ class RSData:
     and `orbit_data` properties.
     """
 
-    def __init__(self, dataset_name: str = "no name", pri: float = 0, presumming: int = 0, filename_base: str = "", use_gzip_and_iso8859_1: bool = False, logger: Any = None) -> None:
+    def __init__(
+        self,
+        dataset_name: str = "no name",
+        pri: float = 0,
+        presumming: int = 0,
+        filename_base: str = "",
+        use_gzip_and_iso8859_1: bool = False,
+        logger: Any = None,
+    ) -> None:
         self.dataset_name = dataset_name
         self.n_frames = 0
-        self.pri = pri                      # in s
+        self.pri = pri  # in s
         self.presumming = presumming
         self.filename_base = filename_base
         self.use_gzip_and_iso8859_1 = use_gzip_and_iso8859_1
@@ -74,7 +82,9 @@ class RSData:
 
     def _correct_lon(self) -> None:
         if self._orbit_data is not None:
-            self._orbit_data["Lon"][self._orbit_data["Lon"] < 0] = 360 + self._orbit_data["Lon"][self._orbit_data["Lon"] < 0]
+            self._orbit_data["Lon"][self._orbit_data["Lon"] < 0] = (
+                360 + self._orbit_data["Lon"][self._orbit_data["Lon"] < 0]
+            )
 
     @property
     def data(self) -> npt.NDArray | None:
@@ -103,12 +113,16 @@ class RSData:
         print("ERROR: cannot set orbit data manually.")
 
     def __str__(self) -> str:
-        output_str = f"{self.dataset_name}, n_frames={self.n_frames}, PRI={self.pri*1e6:.1f} us, presum={self.presumming}"
+        output_str = f"{self.dataset_name}, n_frames={self.n_frames}, PRI={self.pri * 1e6:.1f} us, presum={self.presumming}"
         if self.filename_base != "":
             output_str += f", base filename: {self.filename_base}"
         return output_str
 
-    def load(self, mode: str = "full", force_reload: bool = False) -> bool | None:            # mode can be: "all", "ancillary", "data". Not all implementation may be able to provide different behaviors
+    def load(
+        self, mode: str = "full", force_reload: bool = False
+    ) -> (
+        bool | None
+    ):  # mode can be: "all", "ancillary", "data". Not all implementation may be able to provide different behaviors
         """Loads the dataset identified by `filename_base`, either completely (mode="full") or limiting the work to the ancillary data or to the echo data; with `force_reload` the already-read parts are read again."""
         if self.filename_base != "":
             return self._load_from_file(mode, force_reload)
@@ -116,13 +130,19 @@ class RSData:
             print("ERROR: dataset base filename not set.")
             return False
 
-    def set_orbit_data_from_ext(self, ext_orbit_data: dict[str, npt.NDArray | float]) -> None:
+    def set_orbit_data_from_ext(
+        self, ext_orbit_data: dict[str, npt.NDArray | float]
+    ) -> None:
         """Installs externally produced orbit data, bypassing `generate_orbit_data`."""
         self._orbit_data = ext_orbit_data
 
-    def _load_from_file(self, mode: str | None, force_reload: bool) -> bool | None:      # "virtual" method
+    def _load_from_file(
+        self, mode: str | None, force_reload: bool
+    ) -> bool | None:  # "virtual" method
         raise NotImplementedError
 
-    def generate_orbit_data(self, skip: int) -> None:                # generates orbit data which match 1:1 with the data
+    def generate_orbit_data(
+        self, skip: int
+    ) -> None:  # generates orbit data which match 1:1 with the data
         """Builds the per-frame orbit-data dictionary of the dataset; implemented by the format-specific subclasses."""
         raise NotImplementedError

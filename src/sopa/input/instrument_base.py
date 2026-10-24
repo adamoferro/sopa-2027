@@ -21,19 +21,27 @@
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
 
-"""Base class for radar-sounder instrument definitions.
-"""
+"""Base class for radar-sounder instrument definitions."""
+
 
 class RSInstrument:
     """Stores the physical and acquisition parameters common to radar sounders: center frequency, bandwidth, fast-time sampling frequency, chirp duration and platform reference velocity."""
 
-    def __init__(self, name: str, frequency: float, bandwidth: float, fast_time_sampling_frequency: float, chirp_duration: float, ref_v_platform: float) -> None:
+    def __init__(
+        self,
+        name: str,
+        frequency: float,
+        bandwidth: float,
+        fast_time_sampling_frequency: float,
+        chirp_duration: float,
+        ref_v_platform: float,
+    ) -> None:
         self.name = name
-        self.frequency = frequency                                          # Hz
-        self.bandwidth = bandwidth                                          # Hz
-        self.fast_time_sampling_frequency = fast_time_sampling_frequency    # Hz
-        self.chirp_duration = chirp_duration                                # s
-        self.ref_v_platform = ref_v_platform                                # m/s
+        self.frequency = frequency  # Hz
+        self.bandwidth = bandwidth  # Hz
+        self.fast_time_sampling_frequency = fast_time_sampling_frequency  # Hz
+        self.chirp_duration = chirp_duration  # s
+        self.ref_v_platform = ref_v_platform  # m/s
 
     def __str__(self) -> str:
-        return f"{self.name}, fc={self.frequency/1e6:.1f} MHz, fb={self.bandwidth/1e6:.1f} MHz"
+        return f"{self.name}, fc={self.frequency / 1e6:.1f} MHz, fb={self.bandwidth / 1e6:.1f} MHz"
