@@ -54,6 +54,8 @@ qt = ["PyQt6==6.11.0"]
 test = ["pytest==9.1.1"]
 # linter (ruff); not imported by the package itself
 lint = ["ruff==0.17.2"]
+# commit hooks (pre-commit; manages its own isolated ruff environment — see .pre-commit-config.yaml)
+dev = ["pre-commit==4.7.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
