@@ -241,9 +241,6 @@ class _SIMBase:
         self.sim_image = np.zeros(
             [self._N_OUTPUT_SAMPLES, n_frames_to_be_simulated]
         )  # , dtype="int16")   # see comment below
-        self.uncert_image = np.zeros(self.sim_image.shape)  # , dtype="uint8")
-        self.ground_distance_min_image = np.zeros(self.sim_image.shape)
-        self.ground_distance_max_image = np.zeros(self.sim_image.shape)
         self.first_return_lats = np.zeros(n_frames_to_be_simulated)
         self.first_return_lons = np.zeros(n_frames_to_be_simulated)
 

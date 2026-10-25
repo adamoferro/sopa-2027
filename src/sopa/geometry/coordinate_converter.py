@@ -228,10 +228,7 @@ class CoordinateConverter:
                 else:
                     return np.pi
         else:
-            angle = np.zeros([v2.shape[1], v2.shape[2]])
-            for i_y in np.arange(angle.shape[0]):
-                for i_x in np.arange(angle.shape[1]):
-                    angle[i_y, i_x] = np.dot(v1_u[:, i_y, i_x], v2_u[:, i_y, i_x])
+            angle = np.einsum("i...,i...->...", v1_u, v2_u, optimize=False)
             angle = np.arccos(angle)
             nans = np.isnan(angle)
             angle[nans] = ((v1_u[:, nans] == v2_u[:, nans]).all()) * np.pi

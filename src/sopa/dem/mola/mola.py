@@ -48,7 +48,9 @@ class MOLA(DEMBase):
         max_lat: float = 88,
         min_long: float = 0,
         sampling_den: float = 128,
+        copy_image: bool = True,
     ) -> None:
+        """Sets the DEM metadata and, when an image is provided, adopts it as the DEM image: by default the image is copied, with `copy_image=False` the instance becomes the sole owner of the passed array without copying (for freshly created images with no other owner)."""
         super().__init__(dem_name, filename_base, dummy_value)
         self._MOLA_MAX_LAT = max_lat  # degrees
         self._MOLA_MIN_LONG = min_long  # degrees
@@ -64,7 +66,7 @@ class MOLA(DEMBase):
 
         self.dem = None
         if image is not None:
-            self.dem = image.copy()
+            self.dem = image.copy() if copy_image else image
             self._set_info()
 
     def __str__(self) -> str:
@@ -183,6 +185,7 @@ class MOLA(DEMBase):
                 max_lat=self._MOLA_MAX_LAT - mola_y_min * self.deg_sampling,
                 min_long=self._MOLA_MIN_LONG + mola_x_min * self.deg_sampling,
                 sampling_den=1.0 / self.deg_sampling * scale_factor,
+                copy_image=False,
             )
 
         else:

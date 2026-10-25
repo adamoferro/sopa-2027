@@ -217,6 +217,86 @@ def test_angle_between_matrices() -> None:
     np.testing.assert_allclose(angles, [[0.0, np.pi / 2.0], [0.0, np.pi]])
 
 
+def _angle_between_matrix_loop_reference(
+    v1: npt.NDArray[np.float64], v2: npt.NDArray[np.float64]
+) -> npt.NDArray[np.float64]:
+    """Reference implementation of the pre-vectorization matrix branch of
+    `angle_between`: the same unit-vector normalization, then a per-element
+    np.dot double loop and the same NaN fallback, including its whole-matrix
+    semantics (one joint equality scalar over all NaN columns)."""
+    v1_u = CoordinateConverter.unit_vector(v1)
+    v2_u = CoordinateConverter.unit_vector(v2)
+    angle = np.zeros([v2.shape[1], v2.shape[2]])
+    for i_y in np.arange(angle.shape[0]):
+        for i_x in np.arange(angle.shape[1]):
+            angle[i_y, i_x] = np.dot(v1_u[:, i_y, i_x], v2_u[:, i_y, i_x])
+    angle = np.arccos(angle)
+    nans = np.isnan(angle)
+    angle[nans] = ((v1_u[:, nans] == v2_u[:, nans]).all()) * np.pi
+    return angle
+
+
+def test_angle_between_matrix_bitwise_against_loop_reference() -> None:
+    """Pins the vectorized matrix branch of `angle_between` bitwise against
+    the pre-vectorization per-element np.dot loop, on fixed-seed random
+    matrices and on crafted columns with exact-parallel and exact-antiparallel
+    pairs whose normalized dot products round past +/-1 and drive arccos to
+    NaN, exercising the fallback and its whole-matrix semantics."""
+    rng = np.random.default_rng(2027)
+    v1_random = rng.standard_normal((3, 7, 9))
+    v2_random = rng.standard_normal((3, 7, 9))
+    np.testing.assert_array_equal(
+        CoordinateConverter.angle_between(v1_random, v2_random),
+        _angle_between_matrix_loop_reference(v1_random, v2_random),
+    )
+
+    # a single parallel column rounds past +1 and falls back alone: the joint
+    # equality over the NaN columns is True, so the fallback value is pi
+    v1_single = np.ones((3, 1, 3))
+    v2_single = np.zeros((3, 1, 3))
+    v2_single[:, 0, 0] = [1.0, 1.0, 1.0]
+    v2_single[:, 0, 1] = [1.0, -1.0, 0.0]
+    v2_single[:, 0, 2] = [0.0, 1.0, -1.0]
+    raw_single = np.einsum(
+        "i...,i...->...",
+        CoordinateConverter.unit_vector(v1_single),
+        CoordinateConverter.unit_vector(v2_single),
+        optimize=False,
+    )
+    assert raw_single[0, 0] > 1.0  # the parallel column reaches the fallback
+    angles_single = CoordinateConverter.angle_between(v1_single, v2_single)
+    np.testing.assert_array_equal(
+        angles_single,
+        _angle_between_matrix_loop_reference(v1_single, v2_single),
+    )
+    assert angles_single[0, 0] == np.pi  # exact parallel, fallback value
+
+    # parallel and antiparallel columns round past +/-1 together: the joint
+    # equality over all NaN columns is False, so by the whole-matrix quirk
+    # every fallback position (the antiparallel one included) receives 0.0
+    v1_mixed = np.ones((3, 1, 4))
+    v2_mixed = np.zeros((3, 1, 4))
+    v2_mixed[:, 0, 0] = [1.0, 1.0, 1.0]
+    v2_mixed[:, 0, 1] = [-1.0, -1.0, -1.0]
+    v2_mixed[:, 0, 2] = [2.0, 2.0, 2.0]
+    v2_mixed[:, 0, 3] = [1.0, -1.0, 0.0]
+    raw_mixed = np.einsum(
+        "i...,i...->...",
+        CoordinateConverter.unit_vector(v1_mixed),
+        CoordinateConverter.unit_vector(v2_mixed),
+        optimize=False,
+    )
+    assert raw_mixed[0, 0] > 1.0  # parallel column reaches the fallback
+    assert raw_mixed[0, 1] < -1.0  # antiparallel column reaches the fallback
+    angles_mixed = CoordinateConverter.angle_between(v1_mixed, v2_mixed)
+    np.testing.assert_array_equal(
+        angles_mixed,
+        _angle_between_matrix_loop_reference(v1_mixed, v2_mixed),
+    )
+    nans_mixed = np.isnan(np.arccos(raw_mixed))
+    assert (angles_mixed[nans_mixed] == 0.0).all()  # quirk: 0.0, not pi
+
+
 def test_utm_roundtrip_northern_hemisphere(cc: MARS_IAU2000) -> None:
     """Checks the UTM projection and inverse on a mid-latitude point: zone
     46T for lon 90 deg, and a sub-microradian inverse roundtrip."""
