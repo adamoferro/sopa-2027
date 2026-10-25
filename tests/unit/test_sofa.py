@@ -303,3 +303,31 @@ def test_focus_tiny_run_unweighted(stub_data: _StubRawData) -> None:
     assert np.all(np.isfinite(output))
     assert np.all(output >= 0)
     assert np.sum(output) > 0
+
+
+def test_focus_tiny_run_no_doppler_correction(stub_data: _StubRawData) -> None:
+    """Checks the same focus run as test_focus_tiny_run with the Doppler phase
+    compensation disabled: the run completes, one output column per focused
+    frame (arange(3, 10) = 7), all values finite and non-negative, and
+    positive total power."""
+    pars = FocuserParameters(
+        frame_start=3,
+        frame_end=10,
+        frame_half_aperture=N_HALF_APERTURE,
+        squint_angle=0,
+        compensate_doppler_phase=False,
+    )
+    f = SOFA(
+        SHARAD(),
+        MARS_IAU2000(),
+        np.full(N_FRAMES, 3396000, dtype="int32"),
+        stub_data,
+        pars,
+        n_processes=1,
+    )
+    output = f.focus()
+    assert output is not None
+    assert output.shape == (667 * 2, 7)
+    assert np.all(np.isfinite(output))
+    assert np.all(output >= 0)
+    assert np.sum(output) > 0

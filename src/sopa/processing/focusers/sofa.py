@@ -409,19 +409,12 @@ class SOFA:
             self._azimuth_weighting_window_original
             * np.ones([self._N_OUTPUT_SAMPLES, 1])
         )
+        azimuth_weighting_is_unity = np.isscalar(
+            self._azimuth_weighting_window_original
+        )
 
         delay_start_shifts = (
             input_rxwin_data_t_shifts + input_scr_data_shifts_alignment_t
-        )
-
-        # create complex phasor
-        data_samples = np.arange(self._n_input_samples)
-        phasor_samples = np.arange(self._SIZE_RANGE_FFT)
-
-        # baseband conversion
-        phasor_const = 2.0 * np.pi * (-self._frequency)
-        phasor = np.exp(
-            1j * (phasor_const * (phasor_samples / self._fast_time_sampling_frequency))
         )
 
         chirp_fft_conj = ProcessingUtils.create_synthetic_chirp_conj(
@@ -526,8 +519,6 @@ class SOFA:
                     frames_to_be_focused_in_this_block,
                     frames_to_be_processed_start,
                     self._SIZE_RANGE_FFT,
-                    data_samples,
-                    phasor,
                     self._C,
                     self._wc,
                     input_rxwin_data_t,
@@ -547,6 +538,7 @@ class SOFA:
                     self._COMPENSATE_DOPPLER_PHASE,
                     self._lmbda_min,
                     self._azimuth_weighting_windows,
+                    azimuth_weighting_is_unity,
                     self._n_gaussian_filters,
                     self._gf_std_devs,
                     self._gf_power_coefficients,
@@ -597,8 +589,6 @@ class SOFA:
         frames_to_be_focused_in_this_block: npt.NDArray[np.int64],
         frames_to_be_processed_start: int,
         sizeFFT1: int,
-        data_samples: npt.NDArray[np.int64],
-        phasor: npt.NDArray[np.complex128],
         c: float,
         wc: float,
         input_rxwin_data_t: npt.NDArray[np.float64],
@@ -618,6 +608,7 @@ class SOFA:
         USE_DOPPLER_CORRECTION: bool,
         lmbda_min: float,
         azimuth_weighting_windows: npt.NDArray[np.float64],
+        azimuth_weighting_is_unity: bool,
         N_GAUSSIAN_FILTERS: int,
         std_devs: list[float],
         gf_power_coefficients: list[float],
@@ -654,24 +645,13 @@ class SOFA:
         output_image = np.zeros([N_OUTPUT_SAMPLES, n_frames_to_be_focused_within_block])
         signals = np.zeros([sizeFFT1, read_block_size_real], dtype="complex")
 
-        # TODO *** check if possible to convert in matrix calculations without killing RAM (as already happened...)
-        for i_frame in np.arange(read_block_size_real):
-            signals[data_samples, i_frame] = input_data[
-                :, i_frame
-            ]  # DELETED * phasor[data_samples]
+        signals[: input_data.shape[0], :] = input_data
 
         print("...matched filtering...")
         signals_fft = np.fft.fft(signals, axis=0)  # spectrum: 0-positive ... negative-0
-
-        # FOR VERSION (slower and less RAM)   TODO *** try to convert in matrix format
-        signals_fft_matched = np.zeros(
-            [len(chirp_fft_conj), read_block_size_real], dtype="complex"
-        )
-        for i_frame in np.arange(read_block_size_real):
-            signals_fft_matched[:, i_frame] = signals_fft[:, i_frame] * chirp_fft_conj
+        signals_fft *= chirp_fft_conj[:, None]
 
         signals = None
-        signals_fft = None
 
         i_frame_focusing = 0
         angle_between_aperture_start_and_ref_sample = 0
@@ -797,21 +777,9 @@ class SOFA:
                 z_sample_ref = r_sample_ref * np.cos(input_phi[ref_frame])
 
                 sc_distance_to_ref_sample_within_aperture_matrix = np.sqrt(
-                    (
-                        input_scx_data[aperture_frames] * np.ones([N_OUTPUT_SAMPLES, 1])
-                        - x_sample_ref * np.ones([1, n_aperture_frames])
-                    )
-                    ** 2
-                    + (
-                        input_scy_data[aperture_frames] * np.ones([N_OUTPUT_SAMPLES, 1])
-                        - y_sample_ref * np.ones([1, n_aperture_frames])
-                    )
-                    ** 2
-                    + (
-                        input_scz_data[aperture_frames] * np.ones([N_OUTPUT_SAMPLES, 1])
-                        - z_sample_ref * np.ones([1, n_aperture_frames])
-                    )
-                    ** 2
+                    (input_scx_data[aperture_frames] - x_sample_ref) ** 2
+                    + (input_scy_data[aperture_frames] - y_sample_ref) ** 2
+                    + (input_scz_data[aperture_frames] - z_sample_ref) ** 2
                 )
 
                 delays_within_aperture = -(
@@ -853,7 +821,7 @@ class SOFA:
                     )
                 )
                 signals_matched_within_aperture[:, i_aperture_frame] = np.fft.ifft(
-                    signals_fft_matched[
+                    signals_fft[
                         :,
                         i_aperture_frame
                         + aperture_frames[0]
@@ -864,10 +832,12 @@ class SOFA:
                 )[OUTPUT_SAMPLES]
 
             # Doppler correction on whole aperture
-            signals_matched_within_aperture *= np.exp(
-                1j * doppler_phase_corr_within_aperture
-            )
-            signals_matched_within_aperture *= azimuth_weighting_windows
+            if USE_DOPPLER_CORRECTION:
+                signals_matched_within_aperture *= np.exp(
+                    1j * doppler_phase_corr_within_aperture
+                )
+            if not azimuth_weighting_is_unity:
+                signals_matched_within_aperture *= azimuth_weighting_windows
 
             signals_matched_within_aperture_azimuth_fft = np.fft.fftshift(
                 np.fft.fft(signals_matched_within_aperture, axis=1), axes=(1,)
