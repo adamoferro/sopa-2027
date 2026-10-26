@@ -24,9 +24,12 @@
 """Unit tests of the SOFA focuser (sopa.processing.focusers.sofa): the raw-data
 type validation, the derived focusing parameters (coherence time, Doppler
 window, Gaussian-filter multilook decomposition, weighting windows), the
-frame-range validation of focus(), and a small end-to-end focus run on a
-tiny synthetic raw dataset.
+frame-range validation of focus(), a small end-to-end focus run on a tiny
+synthetic raw dataset, and the byte-identity of the chunked aperture loop in
+_block_focus across chunk sizes.
 """
+
+from types import SimpleNamespace
 
 import numpy as np
 import numpy.typing as npt
@@ -35,6 +38,7 @@ import pytest
 from sopa.geometry.coordinate_converter import MARS_IAU2000
 from sopa.input.data_base import RSData
 from sopa.input.sharad.instrument import SHARAD
+from sopa.processing.focusers import sofa as sofa_module
 from sopa.processing.focusers.sofa import SOFA
 from sopa.processing.parameters import FocuserParameters
 
@@ -303,6 +307,133 @@ def test_focus_tiny_run_unweighted(stub_data: _StubRawData) -> None:
     assert np.all(np.isfinite(output))
     assert np.all(output >= 0)
     assert np.sum(output) > 0
+
+
+def test_block_focus_chunked_matches_per_column_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Checks that the chunked aperture loop of _block_focus returns
+    byte-identical output images for chunk sizes 1, 32 and 256 on four
+    parameter combinations covering the range-migration, Doppler-correction,
+    Gaussian-filter and azimuth-weighting branches; chunk size 1 is the
+    per-column reference of the former loop."""
+    rng = np.random.default_rng(20261026)
+    size_fft1 = 4096
+    n_output_samples = 200
+    output_samples = np.arange(n_output_samples)
+    n_half_aperture_frames = 60
+    n_aperture_frames = 2 * n_half_aperture_frames + 1
+    n_block_columns = 170
+    n_input_samples = 512
+    frames_to_be_focused_in_this_block = np.array([60, 65, 70, 75], dtype="int64")
+    lmbda_min = 299792458.0 / (20.0e6 + 5.0e6 / 2.0)
+
+    input_theta = rng.uniform(0.0, 2.0 * np.pi, n_block_columns)
+    input_phi = rng.uniform(0.1, np.pi - 0.1, n_block_columns)
+    spacecraft_radius = 3.6e6
+    input_scr_data = np.full(n_block_columns, spacecraft_radius)
+    input_scx_data = spacecraft_radius * np.cos(input_theta) * np.sin(input_phi)
+    input_scy_data = spacecraft_radius * np.sin(input_theta) * np.sin(input_phi)
+    input_scz_data = spacecraft_radius * np.cos(input_phi)
+    dem_radius_profile = np.full(n_block_columns, 3396000, dtype="int32")
+    input_rxwin_data_t = 5.0e-3 + rng.uniform(-1.0e-7, 1.0e-7, n_block_columns)
+    delay_start_shifts = rng.uniform(0.0, 1.0e-7, n_block_columns)
+    chirp_fft_conj = rng.standard_normal(size_fft1) + 1j * rng.standard_normal(
+        size_fft1
+    )
+    fftfreqs = np.fft.fftfreq(size_fft1, 7.5e-9)
+    t_frame_base = 7.5e-9 * output_samples
+    data_obj = SimpleNamespace(
+        data=rng.standard_normal((n_input_samples, n_block_columns))
+    )
+
+    # (correct_range_migration, use_doppler_correction, n_gaussian_filters,
+    #  std_devs, gf_power_coefficients, doppler_half_window_width,
+    #  azimuth_weighting_windows, azimuth_weighting_is_unity)
+    parameter_combinations = (
+        (True, True, 0, [], [], 0, np.ones([n_output_samples, 1]), True),
+        (False, False, 0, [], [], 0, np.ones([n_output_samples, 1]), True),
+        (
+            True,
+            False,
+            2,
+            [9.0, 18.0],
+            [0.66, 0.2244, 0.1156],
+            5,
+            np.ones([n_output_samples, 1]),
+            True,
+        ),
+        (
+            False,
+            True,
+            0,
+            [],
+            [],
+            5,
+            rng.uniform(0.5, 1.5, [n_output_samples, 1]),
+            False,
+        ),
+    )
+
+    for (
+        correct_range_migration,
+        use_doppler_correction,
+        n_gaussian_filters,
+        std_devs,
+        gf_power_coefficients,
+        doppler_half_window_width,
+        azimuth_weighting_windows,
+        azimuth_weighting_is_unity,
+    ) in parameter_combinations:
+
+        def run_block_focus(chunk_size: int) -> npt.NDArray[np.float64]:
+            """Runs _block_focus once with the given aperture-FFT chunk size."""
+            monkeypatch.setattr(sofa_module, "_APERTURE_FFT_CHUNK", chunk_size)
+            return SOFA._block_focus(
+                0,  # block_id
+                0,  # input_data_frame_start
+                n_block_columns,  # input_data_frame_end
+                frames_to_be_focused_in_this_block,
+                0,  # frames_to_be_processed_start
+                size_fft1,
+                SOFA._C,
+                input_rxwin_data_t,
+                chirp_fft_conj,
+                n_output_samples,
+                output_samples,
+                input_scr_data,
+                input_theta,
+                input_phi,
+                n_half_aperture_frames,
+                n_aperture_frames,
+                correct_range_migration,
+                input_scx_data,
+                input_scy_data,
+                input_scz_data,
+                use_doppler_correction,
+                lmbda_min,
+                azimuth_weighting_windows,
+                azimuth_weighting_is_unity,
+                n_gaussian_filters,
+                std_devs,
+                gf_power_coefficients,
+                doppler_half_window_width,
+                0,  # squint_offset_approx_frames
+                t_frame_base,
+                dem_radius_profile,
+                fftfreqs,
+                delay_start_shifts,
+                data_obj,
+            )
+
+        reference_bytes = run_block_focus(1).tobytes()
+        for chunk_size in (32, 256):
+            chunked_bytes = run_block_focus(chunk_size).tobytes()
+            assert chunked_bytes == reference_bytes, (
+                f"chunk size {chunk_size} differs from the per-column reference "
+                f"(range migration = {correct_range_migration}, "
+                f"Doppler correction = {use_doppler_correction})"
+            )
 
 
 def test_focus_tiny_run_no_doppler_correction(stub_data: _StubRawData) -> None:

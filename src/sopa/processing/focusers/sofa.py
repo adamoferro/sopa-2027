@@ -38,6 +38,11 @@ from scipy.ndimage import gaussian_filter1d
 
 from sopa.processing.utils import ProcessingUtils
 
+# Number of aperture frames per batched ifft call in _block_focus. The batch
+# axis is bounded by this constant, never by block or aperture size, so the
+# chunk buffers stay fixed-size regardless of the processing scale.
+_APERTURE_FFT_CHUNK = 256
+
 
 class SOFA:
     """Synthetic-aperture focuser for SHARAD raw data.
@@ -85,7 +90,6 @@ class SOFA:
         self._frequency = instr_obj.frequency
         self._bandwidth = instr_obj.bandwidth
         self._fast_time_sampling_frequency = instr_obj.fast_time_sampling_frequency
-        self._wc = 2.0 * np.pi * instr_obj.frequency
         self._lmbda_min = self._C / (
             instr_obj.frequency + instr_obj.bandwidth / 2.0
         )  # wavelength at highest frequency
@@ -520,12 +524,10 @@ class SOFA:
                     frames_to_be_processed_start,
                     self._SIZE_RANGE_FFT,
                     self._C,
-                    self._wc,
                     input_rxwin_data_t,
                     chirp_fft_conj,
                     self._N_OUTPUT_SAMPLES,
                     OUTPUT_SAMPLES,
-                    self._dt,
                     input_scr_data,
                     input_theta,
                     input_phi,
@@ -561,9 +563,7 @@ class SOFA:
             return None
         else:
             output_image[:, 0 : n_frames_to_be_focused_per_block[0]] = (
-                SOFA._block_focus(
-                    0, *(input_parameters[0]), self.data_obj, self.geom_obj
-                )[0]
+                SOFA._block_focus(0, *(input_parameters[0]), self.data_obj)
             )
             for block_id in np.arange(1, n_blocks):
                 output_image[
@@ -576,8 +576,7 @@ class SOFA:
                     block_id,
                     *(input_parameters[block_id]),
                     self.data_obj,
-                    self.geom_obj,
-                )[0]
+                )
 
         return output_image
 
@@ -590,12 +589,10 @@ class SOFA:
         frames_to_be_processed_start: int,
         sizeFFT1: int,
         c: float,
-        wc: float,
         input_rxwin_data_t: npt.NDArray[np.float64],
         chirp_fft_conj: npt.NDArray[np.complex128],
         N_OUTPUT_SAMPLES: int,
         OUTPUT_SAMPLES: npt.NDArray[np.int64],
-        dt_compr: float,
         input_scr_data: npt.NDArray[np.float64],
         input_theta: npt.NDArray[np.float64],
         input_phi: npt.NDArray[np.float64],
@@ -619,9 +616,8 @@ class SOFA:
         fftfreqs: npt.NDArray[np.float64],
         delay_start_shifts: npt.NDArray[np.float64],
         data_obj: Any,
-        geom_obj: Any,
-    ) -> tuple[npt.NDArray[np.float64], float, float]:
-        """Focuses one block of frames (range compression, per-aperture-frame delays, range-migration and Doppler phase corrections, azimuth FFT and multilooking) and returns the block image together with the average aperture-center and aperture-extent angles accumulated along the block."""
+    ) -> npt.NDArray[np.float64]:
+        """Focuses one block of frames (range compression, per-aperture-frame delays, range-migration and Doppler phase corrections, azimuth FFT and multilooking) and returns the block image."""
 
         input_data = data_obj.data[:, input_data_frame_start:input_data_frame_end]
         read_block_size_real = input_data.shape[1]
@@ -651,18 +647,24 @@ class SOFA:
         signals_fft = np.fft.fft(signals, axis=0)  # spectrum: 0-positive ... negative-0
         signals_fft *= chirp_fft_conj[:, None]
 
-        signals = None
+        del signals
 
         i_frame_focusing = 0
-        angle_between_aperture_start_and_ref_sample = 0
-        angle_between_aperture_center_and_ref_sample = 0
-        angle_between_aperture_end_and_ref_sample = 0
 
         # aperture has final length = 2*n_half_aperture_frames+1
         aperture_range_offset = np.arange(
             squint_offset_approx_frames - n_half_aperture_frames,
             squint_offset_approx_frames + n_half_aperture_frames + 1,
             dtype="int",
+        )
+        # Allocated once per block and reused across ref frames; every element
+        # is overwritten before use on each ref frame.
+        signals_matched_within_aperture = np.zeros(
+            [N_OUTPUT_SAMPLES, n_aperture_frames], dtype="complex"
+        )
+        delay_ramp_prefactor = -1j * 2.0 * np.pi * fftfreqs
+        ifft_chunk_buffer = np.empty(
+            [sizeFFT1, min(_APERTURE_FFT_CHUNK, n_aperture_frames)], dtype="complex"
         )
         for ref_frame_abs in frames_to_be_focused_within_block:
             ref_frame = (
@@ -671,7 +673,7 @@ class SOFA:
             aperture_frames = ref_frame + aperture_range_offset
 
             if CORRECT_RANGE_MIGRATION:
-                # range migration is corrected wrt DEM radius: not necessary to correct for every single sample, error is negligible TODO *** check (already done, but investigate more)
+                # range migration is corrected wrt DEM radius: not necessary to correct for every single sample, error is negligible
                 r_sample_ref = dem_radius_profile[ref_frame]
                 x_sample_ref = (
                     r_sample_ref
@@ -704,60 +706,6 @@ class SOFA:
                 t_within_frames_within_aperture_ref = (
                     sc_distance_to_ref_sample_within_aperture_ref * 2.0 / c
                     - input_rxwin_data_t[ref_frame]
-                )
-
-                sc_position_wrt_ref_sample = (
-                    input_scx_data[ref_frame] - x_sample_ref,
-                    input_scy_data[ref_frame] - y_sample_ref,
-                    input_scz_data[ref_frame] - z_sample_ref,
-                )
-                sc_aperture_start_position_wrt_ref_sample = (
-                    input_scx_data[
-                        ref_frame + squint_offset_approx_frames - n_half_aperture_frames
-                    ]
-                    - x_sample_ref,
-                    input_scy_data[
-                        ref_frame + squint_offset_approx_frames - n_half_aperture_frames
-                    ]
-                    - y_sample_ref,
-                    input_scz_data[
-                        ref_frame + squint_offset_approx_frames - n_half_aperture_frames
-                    ]
-                    - z_sample_ref,
-                )
-                sc_aperture_center_position_wrt_ref_sample = (
-                    input_scx_data[ref_frame + squint_offset_approx_frames]
-                    - x_sample_ref,
-                    input_scy_data[ref_frame + squint_offset_approx_frames]
-                    - y_sample_ref,
-                    input_scz_data[ref_frame + squint_offset_approx_frames]
-                    - z_sample_ref,
-                )
-                sc_aperture_end_position_wrt_ref_sample = (
-                    input_scx_data[
-                        ref_frame + squint_offset_approx_frames + n_half_aperture_frames
-                    ]
-                    - x_sample_ref,
-                    input_scy_data[
-                        ref_frame + squint_offset_approx_frames + n_half_aperture_frames
-                    ]
-                    - y_sample_ref,
-                    input_scz_data[
-                        ref_frame + squint_offset_approx_frames + n_half_aperture_frames
-                    ]
-                    - z_sample_ref,
-                )
-
-                angle_between_aperture_start_and_ref_sample += geom_obj.angle_between(
-                    sc_position_wrt_ref_sample,
-                    sc_aperture_start_position_wrt_ref_sample,
-                )
-                angle_between_aperture_center_and_ref_sample += geom_obj.angle_between(
-                    sc_position_wrt_ref_sample,
-                    sc_aperture_center_position_wrt_ref_sample,
-                )
-                angle_between_aperture_end_and_ref_sample += geom_obj.angle_between(
-                    sc_position_wrt_ref_sample, sc_aperture_end_position_wrt_ref_sample
                 )
 
                 t_sample_compr_ref = t_frame_base.T + input_rxwin_data_t[ref_frame]
@@ -805,31 +753,38 @@ class SOFA:
                     [N_OUTPUT_SAMPLES, n_aperture_frames]
                 )
 
-            signals_matched_within_aperture = np.zeros(
-                [N_OUTPUT_SAMPLES, n_aperture_frames], dtype="complex"
+            first_aperture_column = (
+                aperture_frames[0]
+                + frames_to_be_processed_start
+                - input_data_frame_start
             )
-
-            for i_aperture_frame in aperture_frames - aperture_frames[0]:
-                delay_vector_fft = np.exp(
-                    -1j
-                    * 2.0
-                    * np.pi
-                    * fftfreqs
-                    * (
-                        delays_within_aperture[i_aperture_frame]
-                        + delay_start_shifts[ref_frame]
-                    )
+            for i_chunk_start in range(0, n_aperture_frames, _APERTURE_FFT_CHUNK):
+                i_chunk_end = min(
+                    i_chunk_start + _APERTURE_FFT_CHUNK, n_aperture_frames
                 )
-                signals_matched_within_aperture[:, i_aperture_frame] = np.fft.ifft(
-                    signals_fft[
-                        :,
-                        i_aperture_frame
-                        + aperture_frames[0]
-                        + frames_to_be_processed_start
-                        - input_data_frame_start,
-                    ]
-                    * delay_vector_fft
-                )[OUTPUT_SAMPLES]
+                n_chunk_frames = i_chunk_end - i_chunk_start
+                chunk_product = ifft_chunk_buffer[:, :n_chunk_frames]
+                np.multiply(
+                    delay_ramp_prefactor[:, None],
+                    (
+                        delays_within_aperture[i_chunk_start:i_chunk_end]
+                        + delay_start_shifts[ref_frame]
+                    )[None, :],
+                    out=chunk_product,
+                )
+                np.exp(chunk_product, out=chunk_product)
+                chunk_first_column = first_aperture_column + i_chunk_start
+                chunk_last_column = first_aperture_column + i_chunk_end
+                np.multiply(
+                    signals_fft[:, chunk_first_column:chunk_last_column],
+                    chunk_product,
+                    out=chunk_product,
+                )
+                # OUTPUT_SAMPLES is arange(N_OUTPUT_SAMPLES), so the per-column
+                # fancy index of the former loop is this prefix slice.
+                signals_matched_within_aperture[:, i_chunk_start:i_chunk_end] = (
+                    np.fft.ifft(chunk_product, axis=0)[:N_OUTPUT_SAMPLES, :]
+                )
 
             # Doppler correction on whole aperture
             if USE_DOPPLER_CORRECTION:
@@ -881,40 +836,16 @@ class SOFA:
                 axis=1,
             )
             frame_multilooking_start = frame_power_max_index - doppler_half_window_width
-            output_frame_power = np.zeros(N_OUTPUT_SAMPLES)
-            for i_output_sample in OUTPUT_SAMPLES:
-                output_frame_power[i_output_sample] = np.sum(
-                    signals_matched_within_aperture_azimuth_fft[
-                        i_output_sample,
-                        frame_multilooking_start[
-                            i_output_sample
-                        ] : frame_multilooking_start[i_output_sample]
-                        + doppler_half_window_width * 2
-                        + 1,
-                    ]
-                ) / (doppler_half_window_width * 2 + 1)
+            output_frame_power = np.lib.stride_tricks.sliding_window_view(
+                signals_matched_within_aperture_azimuth_fft,
+                doppler_half_window_width * 2 + 1,
+                axis=1,
+            )[OUTPUT_SAMPLES, frame_multilooking_start[OUTPUT_SAMPLES]].sum(axis=1) / (
+                doppler_half_window_width * 2 + 1
+            )
 
             output_image[OUTPUT_SAMPLES, i_frame_focusing] = output_frame_power[:]
 
             i_frame_focusing += 1
 
-        angle_between_aperture_start_and_ref_sample /= (
-            n_frames_to_be_focused_within_block
-        )
-        angle_between_aperture_center_and_ref_sample /= (
-            n_frames_to_be_focused_within_block
-        )
-        angle_between_aperture_end_and_ref_sample /= n_frames_to_be_focused_within_block
-
-        if abs(squint_offset_approx_frames) < n_half_aperture_frames:
-            angle_between_aperture_start_and_ref_sample *= -1
-        aperture_angle = np.abs(
-            angle_between_aperture_end_and_ref_sample
-            - angle_between_aperture_start_and_ref_sample
-        )
-
-        return (
-            output_image,
-            angle_between_aperture_center_and_ref_sample,
-            aperture_angle,
-        )
+        return output_image
