@@ -29,6 +29,11 @@ synthetic raw dataset, and the byte-identity of the chunked aperture loop in
 _block_focus across chunk sizes.
 """
 
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -47,6 +52,102 @@ N_INPUT_SAMPLES = 900
 PRI = 1428e-6
 PRESUMMING = 16
 N_HALF_APERTURE = 3
+
+# Fresh-interpreter probe for the peak-RSS budget test: _block_focus at the
+# heavy configuration's sizes (4096-point FFT, 1517 aperture frames, 1374
+# output samples, 4 focused frames), default aperture-FFT chunk. The peak is
+# read from /proc/self/status VmHWM -- the current mm's high-water mark, which
+# exec resets -- and NOT from getrusage ru_maxrss: that one is task-lifetime
+# and a forked child inherits the forking parent's resident pages between
+# fork and exec (measured: a child of a ~700 MiB parent reports ru_maxrss
+# ~712 MiB against its own VmHWM of ~12 MiB). Printed as the last line for
+# the parent test to parse.
+_HEAVY_PROBE_SCRIPT = """\
+from pathlib import Path
+from types import SimpleNamespace
+
+import numpy as np
+
+from sopa.processing.focusers.sofa import SOFA
+
+rng = np.random.default_rng(20261026)
+size_fft1 = 4096
+n_output_samples = 1374
+output_samples = np.arange(n_output_samples)
+n_half_aperture_frames = 758
+n_aperture_frames = 2 * n_half_aperture_frames + 1
+n_block_columns = 1530
+n_input_samples = 512
+frames_to_be_focused_in_this_block = np.array([758, 762, 766, 770], dtype="int64")
+lmbda_min = 299792458.0 / (20.0e6 + 5.0e6 / 2.0)
+
+input_theta = rng.uniform(0.0, 2.0 * np.pi, n_block_columns)
+input_phi = rng.uniform(0.1, np.pi - 0.1, n_block_columns)
+spacecraft_radius = 3.6e6
+input_scr_data = np.full(n_block_columns, spacecraft_radius)
+input_scx_data = spacecraft_radius * np.cos(input_theta) * np.sin(input_phi)
+input_scy_data = spacecraft_radius * np.sin(input_theta) * np.sin(input_phi)
+input_scz_data = spacecraft_radius * np.cos(input_phi)
+dem_radius_profile = np.full(n_block_columns, 3396000, dtype="int32")
+input_rxwin_data_t = 5.0e-3 + rng.uniform(-1.0e-7, 1.0e-7, n_block_columns)
+delay_start_shifts = rng.uniform(0.0, 1.0e-7, n_block_columns)
+chirp_fft_conj = rng.standard_normal(size_fft1) + 1j * rng.standard_normal(size_fft1)
+fftfreqs = np.fft.fftfreq(size_fft1, 7.5e-9)
+t_frame_base = 7.5e-9 * output_samples
+data_obj = SimpleNamespace(data=rng.standard_normal((n_input_samples, n_block_columns)))
+
+output_image = SOFA._block_focus(
+    0,
+    0,
+    n_block_columns,
+    frames_to_be_focused_in_this_block,
+    0,
+    size_fft1,
+    SOFA._C,
+    input_rxwin_data_t,
+    chirp_fft_conj,
+    n_output_samples,
+    output_samples,
+    input_scr_data,
+    input_theta,
+    input_phi,
+    n_half_aperture_frames,
+    n_aperture_frames,
+    True,
+    input_scx_data,
+    input_scy_data,
+    input_scz_data,
+    True,
+    lmbda_min,
+    np.ones([n_output_samples, 1]),
+    True,
+    0,
+    [],
+    [],
+    0,
+    0,
+    t_frame_base,
+    dem_radius_profile,
+    fftfreqs,
+    delay_start_shifts,
+    data_obj,
+)
+assert output_image.shape == (n_output_samples, len(frames_to_be_focused_in_this_block))
+hwm_kib = next(
+    int(line.split()[1])
+    for line in Path("/proc/self/status").read_text().splitlines()
+    if line.startswith("VmHWM:")
+)
+print(f"PEAK_RSS_KIB={hwm_kib}")
+"""
+
+# Budget ceiling for the probe above. Measured ~428 MiB (VmHWM) in a fresh
+# interpreter on this machine (2026-10-26); 480 MiB adds ~12% headroom while
+# staying far below the naive-lift failure class: batching all 1517 aperture
+# frames at once instead of chunks of 256 adds two 4096 x 1517 complex128
+# buffers (~192 MiB total) in place of the 256-wide ones, putting the child
+# process around ~590 MiB.
+_PEAK_RSS_BUDGET_MIB = 480
 
 
 class _StubRawData(RSData):
@@ -434,6 +535,41 @@ def test_block_focus_chunked_matches_per_column_loop(
                 f"(range migration = {correct_range_migration}, "
                 f"Doppler correction = {use_doppler_correction})"
             )
+
+
+def test_block_focus_peak_rss_budget() -> None:
+    """Checks that _block_focus at the heavy configuration's sizes stays under
+    a fixed peak-RSS ceiling when run with the module-default aperture-FFT
+    chunk, in a fresh interpreter so the reading is not polluted by the pytest
+    process. This pins the P3 memory discipline: chunked inner-loop batching
+    must not regress toward the naive full-width lift, which exceeds the
+    ceiling. Measured value, headroom rationale, and why the probe reads
+    /proc/self/status VmHWM instead of getrusage ru_maxrss: see the
+    _HEAVY_PROBE_SCRIPT and _PEAK_RSS_BUDGET_MIB constants."""
+    src_dir = Path(__file__).resolve().parents[2] / "src"
+    env = {**os.environ, "MPLBACKEND": "Agg"}
+    env["PYTHONPATH"] = (
+        str(src_dir)
+        if not env.get("PYTHONPATH")
+        else f"{src_dir}{os.pathsep}{env['PYTHONPATH']}"
+    )
+    probe = subprocess.run(
+        [sys.executable, "-c", _HEAVY_PROBE_SCRIPT],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert probe.returncode == 0, f"probe failed:\n{probe.stderr}"
+
+    matches = re.findall(r"PEAK_RSS_KIB=(\d+)", probe.stdout)
+    assert matches, f"probe printed no PEAK_RSS_KIB marker:\n{probe.stdout}"
+    peak_rss_mib = int(matches[-1]) // 1024
+
+    assert peak_rss_mib <= _PEAK_RSS_BUDGET_MIB, (
+        f"heavy-shape _block_focus peak RSS {peak_rss_mib} MiB exceeds the "
+        f"{_PEAK_RSS_BUDGET_MIB} MiB budget (chunked inner-loop memory "
+        f"discipline violated; VmHWM high-water mark of the probe process)"
+    )
 
 
 def test_focus_tiny_run_no_doppler_correction(stub_data: _StubRawData) -> None:

@@ -34,6 +34,7 @@ and writes its products under /mnt/SOPA/OUTPUT/PDS. It takes about two
 minutes, dominated by the 2 GB DEM read.
 """
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -85,6 +86,7 @@ class RealDataProducts:
     """Products of the reduced real-data processing chain."""
 
     edr: EDR_PDS
+    dem_radius_profile: npt.NDArray
     sim_image: npt.NDArray[np.float64]
     focused_rdr: npt.NDArray[np.float64]
     foc_back: npt.NDArray | None
@@ -207,6 +209,7 @@ def real_products() -> RealDataProducts:
 
     return RealDataProducts(
         edr=d,
+        dem_radius_profile=dem_radius_profile,
         sim_image=sim_image,
         focused_rdr=focused_rdr,
         foc_back=foc_back,
@@ -252,3 +255,49 @@ def test_plots_executed(real_products: RealDataProducts) -> None:
     """Checks that all five plots of the chain exist; the plots run inside the
     session fixture, so a plot exception aborts the fixture with an error."""
     assert len(real_products.plots) == 5
+
+
+def test_focus_block_partition_invariance(
+    real_products: RealDataProducts, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Checks that focusing is invariant to the read-block partition: the same
+    range focused once with a single block (read_block_size_max 5000, the
+    constructor default) and once with several blocks (read_block_size_max
+    200, which splits this range into 4 blocks of 2 focused frames each)
+    produces byte-identical outputs. This pins the partition-invariance of the
+    per-frame focus outputs that the n_processes reactivation of the focuser
+    (phase-6 task P5) builds on."""
+    pars = FocuserParameters(
+        frame_start=FRAME_START,
+        frame_end=FRAME_END,
+        meters_skip=METERS_SKIP,
+        frame_half_aperture=FRAME_HALF_APERTURE,
+        squint_angle=SQUINT_ANGLE,
+    )
+
+    def focus_with(read_block_size_max: int) -> npt.NDArray:
+        f = SOFA(
+            SHARAD(),
+            MARS_IAU2000(),
+            real_products.dem_radius_profile,
+            real_products.edr,
+            pars,
+            n_processes=1,
+            read_block_size_max=read_block_size_max,
+            debug_mode=True,
+        )
+        focused_rdr = f.focus()
+        assert focused_rdr is not None
+        return focused_rdr
+
+    out_one_block = focus_with(5000)
+    capsys.readouterr()  # discard the single-block run's debug output
+
+    out_small_blocks = focus_with(200)
+    n_blocks_match = re.search(r"N BLOCKS = (\d+)", capsys.readouterr().out)
+    assert n_blocks_match is not None, "no N BLOCKS line in the debug output"
+    assert int(n_blocks_match.group(1)) >= 2, (
+        "read_block_size_max=200 did not split the range into multiple blocks"
+    )
+
+    assert out_small_blocks.tobytes() == out_one_block.tobytes()
