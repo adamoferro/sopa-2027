@@ -30,6 +30,12 @@ SHARAD raw echo data.
 # - calculate _SIZE_RANGE_FFT automatically? (next pow2?)
 # - estimate of average number of frames corresponding to the defined squint offset using only the frames required for processing and not the whole track
 
+import concurrent.futures
+import ctypes
+import multiprocessing
+import os
+import re
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -42,6 +48,106 @@ from sopa.processing.utils import ProcessingUtils
 # axis is bounded by this constant, never by block or aperture size, so the
 # chunk buffers stay fixed-size regardless of the processing scale.
 _APERTURE_FFT_CHUNK = 256
+
+# Worker budget of the parallel block focus (phase-6 P5): the pool is capped
+# by the CPU count and by the memory the machine can still admit,
+# n = min(cpu_count, max(1, floor((MemAvailable - reserve) / per_worker))).
+# The reserve (2 GiB) covers parent-side footprint growth that remains
+# possible after the MemAvailable reading (the audited serial in-parent focus
+# growth is ~0.9 GiB: 5942 -> 6845 MiB peak on the heavy configuration); the
+# per-worker budget (1 GiB) carries ~80% headroom over the audited marginal
+# cost of one worker (~0.55 GiB: ~8 GiB total peak at 4 workers over the same
+# ~5.9 GiB base, of which ~225 MiB are the chunked focus buffers and the rest
+# copy-on-write-faulted private pages and pickled block parameters). On the
+# reference machine (16 GiB RAM, MemAvailable ~7 GiB at focus time on the
+# heavy configuration) this admits 4 workers.
+_WORKER_BASE_RESERVE_BYTES = 2 * 1024**3
+_WORKER_MEMORY_BUDGET_BYTES = 1024**3
+
+# Thread-control entry points of the (vendored) OpenBLAS libraries. numpy and
+# scipy load differently named scipy-openblas builds whose symbols carry
+# scipy_/size-suffix decorations; the first symbol found in a library wins.
+_OPENBLAS_SET_NUM_THREADS_SYMBOLS = (
+    "scipy_openblas_set_num_threads64_",
+    "scipy_openblas_set_num_threads_64_",
+    "scipy_openblas_set_num_threads",
+    "scipy_openblas_set_num_threads_",
+    "openblas_set_num_threads64_",
+    "openblas_set_num_threads",
+    "goto_set_num_threads",
+)
+
+# Raw-data object handed to the parallel block focus: set by SOFA.focus before
+# the fork-based pool is created and resolved by the workers through fork
+# copy-on-write, so the multi-GB raw array is never pickled through submit().
+_FORK_BLOCK_FOCUS_DATA_OBJ: Any | None = None
+
+
+def _available_memory_bytes() -> int | None:
+    """Reads MemAvailable from /proc/meminfo and returns it in bytes, or None when the reading is not possible (the kernel-documented estimate of the memory available for starting new work without swapping)."""
+    try:
+        meminfo = Path("/proc/meminfo").read_text()
+    except OSError:
+        return None
+    for line in meminfo.splitlines():
+        if line.startswith("MemAvailable:"):
+            fields = line.split()
+            if len(fields) >= 2:
+                try:
+                    return int(fields[1]) * 1024
+                except ValueError:
+                    return None
+    return None
+
+
+def _max_memory_limited_pool_workers(
+    cpu_count: int, available_memory_bytes: int
+) -> int:
+    """Computes the worker-count ceiling for the parallel block focus from the CPU count and the available memory: the affordable worker count floor((available memory - reserve) / per-worker budget) over the module constants _WORKER_BASE_RESERVE_BYTES and _WORKER_MEMORY_BUDGET_BYTES, at least 1 and at most the CPU count."""
+    affordable_workers = (
+        available_memory_bytes - _WORKER_BASE_RESERVE_BYTES
+    ) // _WORKER_MEMORY_BUDGET_BYTES
+    return min(cpu_count, max(1, affordable_workers))
+
+
+def _pin_openblas_threads(n_threads: int) -> None:
+    """Pins the OpenBLAS thread pool of every OpenBLAS library loaded in this process (numpy's and scipy's vendored scipy-openblas builds among them) to n_threads via ctypes on the already-mapped shared objects. Each forked pool worker calls this before any compute: the OpenBLAS thread pool inherited from the forking parent must not spin up in the child, and single-threaded workers avoid oversubscribing the machine's cores."""
+    try:
+        maps = Path("/proc/self/maps").read_text()
+    except OSError:
+        return
+    for library_path in sorted(set(re.findall(r"\S+openblas\S*", maps))):
+        try:
+            library = ctypes.CDLL(library_path)
+        except OSError:
+            continue
+        for symbol_name in _OPENBLAS_SET_NUM_THREADS_SYMBOLS:
+            set_num_threads = getattr(library, symbol_name, None)
+            if set_num_threads is not None:
+                set_num_threads.argtypes = [ctypes.c_int]
+                set_num_threads(n_threads)
+                break
+
+
+def _pool_worker_initializer() -> None:
+    """Pool initializer of the parallel block focus: pins the worker's OpenBLAS thread pools to one thread before any compute runs in the worker."""
+    _pin_openblas_threads(1)
+
+
+def _pool_block_focus(block_id: int, *input_parameters: Any) -> npt.NDArray[np.float64]:
+    """Worker-side entry point of the parallel block focus: resolves the raw-data object from the fork-inherited module reference (never from pickled arguments) and runs the same _block_focus operation sequence as the serial path, with the worker-side block prints suppressed because the parent prints the per-block progress."""
+    if _FORK_BLOCK_FOCUS_DATA_OBJ is None:
+        raise RuntimeError(
+            "ERROR: the fork-inherited raw-data reference is not set; "
+            "_pool_block_focus must run in a worker forked after SOFA.focus "
+            "set it."
+        )
+    return SOFA._block_focus(
+        block_id,
+        *input_parameters,
+        _FORK_BLOCK_FOCUS_DATA_OBJ,
+        verbose=False,
+    )
 
 
 class SOFA:
@@ -61,9 +167,11 @@ class SOFA:
     combination of Gaussian-filtered spectra (gauss_rec_n_filters /
     gauss_rec_alpha). The squint angle offsets the aperture with respect to
     the frame to focus (positive: look ahead, negative: look behind). Frames
-    are processed in blocks; `n_processes` is accepted for interface
-    compatibility, but only serial processing is implemented (the 2026 port
-    removed the ray-based parallel branch).
+    are processed in blocks; with `n_processes` = 1 (the default) the blocks
+    are processed serially, with values above 1 they are dispatched to a
+    fork-based process pool whose worker count is capped by the CPU count and
+    by a memory-based worker budget, the workers sharing the raw data with
+    the parent copy-on-write.
     """
 
     _C = 299792458.0
@@ -157,16 +265,11 @@ class SOFA:
 
         self._squint_angle_rad = self._squint_angle_deg * np.pi / 180.0
 
-        # 2026 port: parallel processing based on "ray" has been removed.
-        # Only serial processing is implemented for now; a new parallelization
-        # approach is still to be decided. The n_processes argument is kept
-        # for interface compatibility and ignored (values > 1 fall back to 1).
-        if n_processes > 1:
-            print(
-                "NOTICE: parallelization is currently not implemented (ray removed). Working with 1 process."
-            )
-            n_processes = 1
-        elif n_processes < 1:
+        # Parallel block focusing is implemented again since phase-6 P5: a
+        # fork-based process pool over the focus blocks (see focus()).
+        # Values < 1 fall back to 1; 1 keeps the original serial path, which
+        # is the exact pre-P5 processing code.
+        if n_processes < 1:
             n_processes = 1
 
         self.n_processes = n_processes
@@ -231,7 +334,7 @@ class SOFA:
                 )
 
     def focus(self) -> npt.NDArray[np.float64] | None:
-        """Focuses the selected frames and returns the output image (one column per focused frame); validates the frame range against the input data and computes the actual frame selection (skip in frames or meters, aperture extent and squint offset), returning None on invalid ranges."""
+        """Focuses the selected frames and returns the output image (one column per focused frame); validates the frame range against the input data and computes the actual frame selection (skip in frames or meters, aperture extent and squint offset), returning None on invalid ranges. With n_processes above 1 the per-block focus is dispatched to a fork-based process pool (worker count capped by the CPU count and the memory-based worker budget) and the output is assembled in block order, which leaves it independent of the worker count; the block size is derived per requested process, so a smaller effective worker count only queues more blocks."""
 
         if self._frames_to_be_focused_end >= self._n_input_frames:
             print("ERROR: last frame to be focused after the end of the input data.")
@@ -553,14 +656,67 @@ class SOFA:
                 )
             )
 
-        # 2026 port: the "ray"-based parallel branch has been removed.
-        # Blocks are now always processed serially, in the same order as before.
-        # (The serial code below is the original, unchanged processing path.)
+        # Effective worker count: the requested n_processes, capped by the
+        # CPU count and the memory-based worker budget. A cap down to 1 runs
+        # the serial branch below (the exact pre-P5 processing path); a cap
+        # between 2 and n_processes only queues more blocks, because the
+        # block size is derived per requested process.
+        n_workers = 1
         if self.n_processes > 1:
-            print(
-                "ERROR: parallel processing is not implemented anymore (ray removed). Use n_processes=1."
+            available_memory_bytes = _available_memory_bytes()
+            memory_worker_cap = (
+                _max_memory_limited_pool_workers(
+                    os.process_cpu_count(), available_memory_bytes
+                )
+                if available_memory_bytes is not None
+                else os.process_cpu_count()
             )
-            return None
+            n_workers = min(self.n_processes, memory_worker_cap)
+
+        if n_workers > 1:
+            # Parallel block focus (phase-6 P5): the pool uses the explicit
+            # fork context so the workers inherit the raw data copy-on-write
+            # (with the default forkserver start method the multi-GB array
+            # would have to be pickled per task). The fork happens at the
+            # first submit, before any heavy compute of this focus run, and
+            # the worker initializer pins each worker to one OpenBLAS thread.
+            global _FORK_BLOCK_FOCUS_DATA_OBJ
+            _FORK_BLOCK_FOCUS_DATA_OBJ = self.data_obj
+            print(
+                f"Focusing {n_blocks} block(s) on {n_workers} worker "
+                f"processes (requested: {self.n_processes})."
+            )
+            with concurrent.futures.ProcessPoolExecutor(
+                max_workers=n_workers,
+                mp_context=multiprocessing.get_context("fork"),
+                initializer=_pool_worker_initializer,
+            ) as executor:
+                block_futures = [
+                    executor.submit(
+                        _pool_block_focus,
+                        block_id,
+                        *(input_parameters[block_id]),
+                    )
+                    for block_id in np.arange(n_blocks)
+                ]
+                for block_id, block_future in enumerate(block_futures):
+                    column_start = (
+                        0
+                        if block_id == 0
+                        else n_frames_to_be_focused_per_block_cum[block_id - 1]
+                    )
+                    output_image[
+                        :,
+                        column_start : column_start
+                        + n_frames_to_be_focused_per_block[block_id],
+                    ] = block_future.result()
+                    focused_frames_in_block = input_parameters[block_id][2]
+                    print(
+                        f"PROCESSED BLOCK {block_id} ({block_id + 1}/{n_blocks}):"
+                        f" focused from abs {int(focused_frames_in_block[0])}"
+                        f" to {int(focused_frames_in_block[-1])}"
+                        f" ({len(focused_frames_in_block)} frame(s))"
+                    )
         else:
             output_image[:, 0 : n_frames_to_be_focused_per_block[0]] = (
                 SOFA._block_focus(0, *(input_parameters[0]), self.data_obj)
@@ -616,8 +772,10 @@ class SOFA:
         fftfreqs: npt.NDArray[np.float64],
         delay_start_shifts: npt.NDArray[np.float64],
         data_obj: Any,
+        *,
+        verbose: bool = True,
     ) -> npt.NDArray[np.float64]:
-        """Focuses one block of frames (range compression, per-aperture-frame delays, range-migration and Doppler phase corrections, azimuth FFT and multilooking) and returns the block image."""
+        """Focuses one block of frames (range compression, per-aperture-frame delays, range-migration and Doppler phase corrections, azimuth FFT and multilooking) and returns the block image. The per-block progress prints run only with verbose (the parallel path calls this with verbose=False in the silent pool workers; the parent prints the progress instead)."""
 
         input_data = data_obj.data[:, input_data_frame_start:input_data_frame_end]
         read_block_size_real = input_data.shape[1]
@@ -626,24 +784,26 @@ class SOFA:
         frames_to_be_focused_within_block = frames_to_be_focused_in_this_block
         n_frames_to_be_focused_within_block = len(frames_to_be_focused_within_block)
 
-        print("PROCESSING BLOCK", block_id)
-        print(
-            "  FOCUSING FROM ABS ",
-            frames_to_be_focused_within_block[0],
-            "TO",
-            frames_to_be_focused_within_block[-1],
-        )
-        print(
-            "  n_frames_to_be_focused_within_block =",
-            n_frames_to_be_focused_within_block,
-        )
+        if verbose:
+            print("PROCESSING BLOCK", block_id)
+            print(
+                "  FOCUSING FROM ABS ",
+                frames_to_be_focused_within_block[0],
+                "TO",
+                frames_to_be_focused_within_block[-1],
+            )
+            print(
+                "  n_frames_to_be_focused_within_block =",
+                n_frames_to_be_focused_within_block,
+            )
 
         output_image = np.zeros([N_OUTPUT_SAMPLES, n_frames_to_be_focused_within_block])
         signals = np.zeros([sizeFFT1, read_block_size_real], dtype="complex")
 
         signals[: input_data.shape[0], :] = input_data
 
-        print("...matched filtering...")
+        if verbose:
+            print("...matched filtering...")
         signals_fft = np.fft.fft(signals, axis=0)  # spectrum: 0-positive ... negative-0
         signals_fft *= chirp_fft_conj[:, None]
 

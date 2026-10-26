@@ -301,3 +301,52 @@ def test_focus_block_partition_invariance(
     )
 
     assert out_small_blocks.tobytes() == out_one_block.tobytes()
+
+
+def test_focus_process_count_invariance(
+    real_products: RealDataProducts, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Checks that focusing with n_processes=2 (the fork-based worker pool of
+    the phase-6 P5 reactivation) produces byte-identical output to the serial
+    n_processes=1 path on the same real-data range with the same
+    read_block_size_max. The pool workers reach the raw data through fork
+    copy-on-write and run the same per-block operation sequence, and the
+    output is assembled in block order, so not a single byte may differ. This
+    is the end-to-end pin of the n_processes reactivation."""
+    pars = FocuserParameters(
+        frame_start=FRAME_START,
+        frame_end=FRAME_END,
+        meters_skip=METERS_SKIP,
+        frame_half_aperture=FRAME_HALF_APERTURE,
+        squint_angle=SQUINT_ANGLE,
+    )
+
+    def focus_with(n_processes: int) -> npt.NDArray:
+        f = SOFA(
+            SHARAD(),
+            MARS_IAU2000(),
+            real_products.dem_radius_profile,
+            real_products.edr,
+            pars,
+            n_processes=n_processes,
+            read_block_size_max=5000,
+            debug_mode=True,
+        )
+        focused_rdr = f.focus()
+        assert focused_rdr is not None
+        return focused_rdr
+
+    out_one_process = focus_with(1)
+    capsys.readouterr()  # discard the serial run's debug output
+
+    out_two_processes = focus_with(2)
+    n_blocks_match = re.search(
+        r"Focusing (\d+) block\(s\) on 2 worker processes",
+        capsys.readouterr().out,
+    )
+    assert n_blocks_match is not None, "no worker-pool line in the debug output"
+    assert int(n_blocks_match.group(1)) >= 2, (
+        "n_processes=2 did not split the range into multiple blocks"
+    )
+
+    assert out_two_processes.tobytes() == out_one_process.tobytes()

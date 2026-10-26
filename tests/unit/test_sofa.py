@@ -320,6 +320,29 @@ def test_constructor_weighting_windows_none(stub_data: _StubRawData) -> None:
     assert f._azimuth_weighting_window_original == 1.0
 
 
+def test_constructor_n_processes_clamping(
+    stub_data: _StubRawData, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Checks the n_processes interface since the parallel reactivation:
+    values below one fall back to one, one is kept, values above one are
+    preserved, and the constructor prints no notice in any case (the former
+    parallelization-is-not-implemented notice is gone)."""
+    pars = FocuserParameters(
+        frame_start=0, frame_end=1, frame_half_aperture=N_HALF_APERTURE
+    )
+    for requested, expected in ((-3, 1), (0, 1), (1, 1), (4, 4)):
+        f = SOFA(
+            SHARAD(),
+            MARS_IAU2000(),
+            np.full(N_FRAMES, 3396000, dtype="int32"),
+            stub_data,
+            pars,
+            n_processes=requested,
+        )
+        assert f.n_processes == expected
+        assert capsys.readouterr().out == ""
+
+
 def test_focus_rejects_end_after_data(
     stub_data: _StubRawData, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -570,6 +593,39 @@ def test_block_focus_peak_rss_budget() -> None:
         f"{_PEAK_RSS_BUDGET_MIB} MiB budget (chunked inner-loop memory "
         f"discipline violated; VmHWM high-water mark of the probe process)"
     )
+
+
+def test_worker_budget_formula_boundaries() -> None:
+    """Checks the memory-based worker-budget formula boundaries: with too
+    little memory to admit even one budgeted worker the result is 1, with
+    ample memory it is the CPU count, and in between it is the floored
+    affordable worker count of the module constants."""
+    assert sofa_module._max_memory_limited_pool_workers(4, 1) == 1
+    assert sofa_module._max_memory_limited_pool_workers(4, 2**40) == 4
+    assert (
+        sofa_module._max_memory_limited_pool_workers(
+            4,
+            sofa_module._WORKER_BASE_RESERVE_BYTES
+            + 2 * sofa_module._WORKER_MEMORY_BUDGET_BYTES,
+        )
+        == 2
+    )
+    assert (
+        sofa_module._max_memory_limited_pool_workers(
+            8,
+            sofa_module._WORKER_BASE_RESERVE_BYTES
+            + 10 * sofa_module._WORKER_MEMORY_BUDGET_BYTES,
+        )
+        == 8
+    )
+    assert sofa_module._max_memory_limited_pool_workers(1, 2**40) == 1
+
+
+def test_available_memory_bytes_reading() -> None:
+    """Checks that the MemAvailable reading either fails cleanly (None, e.g.
+    off Linux) or returns a positive byte count."""
+    available = sofa_module._available_memory_bytes()
+    assert available is None or available > 0
 
 
 def test_focus_tiny_run_no_doppler_correction(stub_data: _StubRawData) -> None:
