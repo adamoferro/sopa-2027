@@ -119,8 +119,8 @@ class MOLA(DEMBase):
         lon_e: float,
         lon_w: float,
         scale_factor: float = 4,
-    ) -> MOLA | None:
-        """Extracts the sub-image covering the given lat/lon limits (snapped to the DEM grid), smooths and upscales it by `scale_factor`, and returns it as a new MOLA instance covering the same geographic limits; used by the simulators to sample facet geometry on a grid finer than the native DEM."""
+    ) -> _MOLAScaledSubdemSampler | None:
+        """Extracts the sub-image covering the given lat/lon limits (snapped to the DEM grid), smooths it and returns a lazy sampler evaluating the sub-image upscaled by `scale_factor` through the same spline interpolation as the previously materialized `scipy.ndimage.zoom` image, bit-identical over the same geographic limits; used by the simulators to sample facet geometry on a grid finer than the native DEM."""
         if self.dem is not None:
             lat_n_local = np.ceil(lat_n / self.deg_sampling) * self.deg_sampling
             lat_n_local = (
@@ -155,37 +155,14 @@ class MOLA(DEMBase):
                 mola_y_max[0],
                 add_offset=False,
             )
-            scaled_subdem_image = snd.zoom(
-                snd.gaussian_filter(subdem_image.astype("float"), 1),
-                scale_factor,
-                order=2,
-            )  # , prefilter=False)
-            # scaled_subdem_image = snd.zoom(subdem_image.astype("float"), scale_factor, order=2) #, prefilter=False)
-
-            # # print(np.max(scaled_subdem_image-subdem_image))
-            # # exit()
-            # #
-            # import matplotlib
-            # matplotlib.use("WebAgg")
-            # from matplotlib import pyplot as pp
-            # pp.figure(figsize=(18, 8))
-            # pp.plot(subdem_image[0, :])
-            # pp.figure(figsize=(18, 8))
-            # pp.plot(scaled_subdem_image[0, :])
-            # pp.show()
-            # exit()
-            # pp.imshow(subdem_image)
-            # pp.figure(figsize=(18, 8))
-            # pp.imshow(scaled_subdem_image)
-            # pp.show()
-            # exit()
-
-            return MOLA(
-                image=scaled_subdem_image,
+            smoothed_subdem_image = snd.gaussian_filter(subdem_image.astype("float"), 1)
+            return _MOLAScaledSubdemSampler(
+                smoothed_subdem_image,
                 max_lat=self._MOLA_MAX_LAT - mola_y_min * self.deg_sampling,
                 min_long=self._MOLA_MIN_LONG + mola_x_min * self.deg_sampling,
                 sampling_den=1.0 / self.deg_sampling * scale_factor,
-                copy_image=False,
+                scale_factor=scale_factor,
+                dummy_value=self.dummy_value,
             )
 
         else:
@@ -285,3 +262,95 @@ class MOLA128(MOLA):
             min_long=min_long,
             sampling_den=128,
         )
+
+
+class _MOLAScaledSubdemSampler:
+    """Lazy radius sampler for the smoothed/upscaled sub-DEM extracted by
+    `MOLA.get_scaled_subdem_from_latlon_limits`: it holds the smoothed native
+    sub-image and evaluates, on every lookup, the same order-2 spline
+    interpolation the previously materialized `scipy.ndimage.zoom` upscale was
+    built from, at the exact zoom lattice coordinates
+    (`index * (n_in - 1) / (n_out - 1)` in float64), so the returned radii are
+    bit-identical to reading the materialized image. It exposes the radius
+    lookup and the dummy value of the MOLA view it replaces."""
+
+    def __init__(
+        self,
+        smoothed_subdem: npt.NDArray[np.float64],
+        max_lat: float | npt.NDArray[np.float64],
+        min_long: float | npt.NDArray[np.float64],
+        sampling_den: float,
+        scale_factor: float,
+        dummy_value: int,
+    ) -> None:
+        """Stores the smoothed native sub-image with the geographic bookkeeping of the scaled MOLA view it replaces: `max_lat`/`min_long` are the snapped limits of the native sub-image, `sampling_den` the sampling denominator of the scaled view and `scale_factor` the upscale factor."""
+        self._smoothed_subdem = smoothed_subdem
+
+        n_in_lat, n_in_long = smoothed_subdem.shape
+        n_out_lat = int(round(n_in_lat * scale_factor))
+        n_out_long = int(round(n_in_long * scale_factor))
+        self.dem_shape = (n_out_lat, n_out_long)
+        # zoom lattice factors, bit-equal to scipy.ndimage.zoom's internal
+        # np.divide(n_in - 1, n_out - 1), which defaults to 1 where n_out == 1
+        self._zoom_lat = (
+            (n_in_lat - 1) / (n_out_lat - 1) if (n_out_lat - 1) != 0 else 1.0
+        )
+        self._zoom_long = (
+            (n_in_long - 1) / (n_out_long - 1) if (n_out_long - 1) != 0 else 1.0
+        )
+
+        self._MOLA_MAX_LAT = max_lat  # degrees
+        self._MOLA_MIN_LONG = min_long  # degrees
+        self.deg_sampling = 1.0 / sampling_den  # degrees per pixel
+        self.offset_to_be_added = 3396000  # as per MOLA labels
+        self.dummy_value = dummy_value
+        self._mask: npt.NDArray[np.bool_] | None = None
+
+    def get_dem_radius_from_lat_lon(
+        self, lat: float | npt.NDArray[np.float64], lon: float | npt.NDArray[np.float64]
+    ) -> npt.NDArray[np.int32]:
+        """Returns the sub-DEM radius (in m, MOLA offset included) at the requested lat/lon points on the scaled grid; points outside the scaled sub-DEM coverage receive the dummy value."""
+        mola_x = np.round((lon - self._MOLA_MIN_LONG) / self.deg_sampling).astype("int")
+        mola_y = np.round((self._MOLA_MAX_LAT - lat) / self.deg_sampling).astype("int")
+
+        if len(mola_x.shape) == 0:
+            mola_x = np.array([mola_x])
+            mola_y = np.array([mola_y])
+
+        mola_x[mola_x == self.dem_shape[1]] = 0
+
+        self._mask = (
+            (mola_x < 0)
+            | (mola_y < 0)
+            | (mola_x >= self.dem_shape[1])
+            | (mola_y >= self.dem_shape[0])
+        )
+
+        mola_x[mola_x < 0] = 0
+        mola_y[mola_y < 0] = 0
+        mola_x[mola_x >= self.dem_shape[1]] = 0
+        mola_y[mola_y >= self.dem_shape[0]] = 0
+
+        # the same order-2 spline evaluation the materialized
+        # snd.zoom(..., scale_factor, order=2) image was built with, at the
+        # zoom lattice coordinates (identical order/mode/cval/prefilter);
+        # integer indices are exactly representable in float64, so the
+        # coordinate products are bit-equal to zoom's per-pixel computation
+        radius = snd.map_coordinates(
+            self._smoothed_subdem,
+            np.stack(
+                (
+                    mola_y.astype(np.float64) * self._zoom_lat,
+                    mola_x.astype(np.float64) * self._zoom_long,
+                )
+            ),
+            order=2,
+            mode="constant",
+            cval=0.0,
+            prefilter=True,
+        )
+        # replicate the MOLA view's _XY_vectors_to_radius: truncate toward
+        # zero into int32, add the MOLA offset, mask out-of-coverage points
+        output_dem = radius.astype("int32") + self.offset_to_be_added
+        output_dem[self._mask] = self.dummy_value
+        return output_dem

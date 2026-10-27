@@ -35,6 +35,7 @@ from pathlib import Path
 import numpy as np
 import numpy.typing as npt
 import pytest
+import scipy.ndimage as snd
 
 from sopa.dem.dem_base import DEMBase
 from sopa.dem.mola.mola import MOLA, MOLA128
@@ -260,19 +261,77 @@ def test_reset(
 
 def test_scaled_subdem(dem: tuple[MOLA128, npt.NDArray[np.int16]]) -> None:
     """Checks the smoothed/upscaled sub-DEM extraction inside the DEM coverage
-    (lat 86.75..86.5, lon 0.5..0.0): it returns a new MOLA instance covering
-    the requested limits at 4x sampling, and its radius lookups return finite
-    values inside the extracted area. The snapped pixel ranges are rows 160..192
-    and columns 0..64, i.e. a 33x65 sub-image upscaled to 132x260."""
+    (lat 86.75..86.5, lon 0.5..0.0): since phase-6 P7 it returns a lazy radius
+    sampler instead of a materialized MOLA instance (the sampler keeps the
+    sampling bookkeeping and the radius-lookup/dummy-value interface of the
+    MOLA view it replaces), covering the requested limits at 4x sampling, and
+    its radius lookups return finite int32 values inside the extracted area.
+    Bit-level equality with the materialized zoom path is pinned by the
+    full-lattice probe test. The snapped pixel ranges are rows 160..192 and
+    columns 0..64, i.e. a 33x65 sub-image upscaled to 132x260."""
     m, _ = dem
     sub = m.get_scaled_subdem_from_latlon_limits(86.75, 86.5, 0.5, 0.0, scale_factor=4)
-    assert isinstance(sub, MOLA)
+    assert sub is not None
     assert sub.deg_sampling == pytest.approx(1.0 / 512.0)
     assert sub._MOLA_MAX_LAT == pytest.approx(86.75)
     assert sub._MOLA_MIN_LONG == pytest.approx(0.0)
-    assert sub.dem is not None and sub.dem.shape == (132, 260)
+    assert sub.dem_shape == (132, 260)
     radii = sub.get_dem_radius_from_lat_lon(86.625, 0.25)
-    assert radii is not None and np.all(np.isfinite(radii))
+    assert radii is not None
+    assert radii.dtype == np.dtype("int32")
+    assert np.all(np.isfinite(radii))
+
+
+def test_scaled_subdem_full_lattice_bitwise_equal_to_zoom(
+    dem: tuple[MOLA128, npt.NDArray[np.int16]],
+) -> None:
+    """Probes the lazy scaled sub-DEM sampler against the materialized
+    `scipy.ndimage.zoom` path it replaces: lookups over the complete upscaled
+    lattice must return values bit-identical (after the int32 truncation and
+    the MOLA-offset add) to indexing the zoomed image, as the previous
+    zoom-based MOLA view did. The limits lie on the native grid, so the
+    method's ceil/floor snapping leaves them unchanged and the reference goes
+    through the same public conversion/extraction calls."""
+    m, _ = dem
+    scale_factor = 4
+    sub = m.get_scaled_subdem_from_latlon_limits(
+        86.75, 86.5, 0.5, 0.0, scale_factor=scale_factor
+    )
+    assert sub is not None
+
+    mola_x_min, mola_y_min = m.to_XY_from_LL(86.75, 0.0)
+    mola_x_max, mola_y_max = m.to_XY_from_LL(86.5, 0.5)
+    subdem_image = m.XY_ranges_to_radius(
+        mola_x_min[0], mola_x_max[0], mola_y_min[0], mola_y_max[0], add_offset=False
+    )
+    zoomed = snd.zoom(
+        snd.gaussian_filter(subdem_image.astype("float"), 1), scale_factor, order=2
+    )
+    ref_radii = zoomed.astype("int32") + MOLA_OFFSET
+    n_lat, n_long = zoomed.shape
+    assert sub.dem_shape == (n_lat, n_long)
+
+    ky, kx = np.meshgrid(np.arange(n_lat), np.arange(n_long), indexing="ij")
+    lat_lattice = sub._MOLA_MAX_LAT - ky * sub.deg_sampling
+    lon_lattice = sub._MOLA_MIN_LONG + kx * sub.deg_sampling
+    radii = sub.get_dem_radius_from_lat_lon(lat_lattice, lon_lattice)
+    assert radii is not None
+    assert radii.dtype == np.dtype("int32")
+    assert np.array_equal(radii, ref_radii)
+
+    # boundary semantics carried over from to_XY_from_LL: a longitude mapping
+    # to mola_x == n_long wraps to column 0 without being masked (documented
+    # as-is), while a latitude beyond the southern limit is masked and
+    # receives the dummy value
+    q = n_lat // 2
+    lat_probe = np.array([float(lat_lattice[q, 0]), 86.0])
+    lon_probe = np.array(
+        [float(sub._MOLA_MIN_LONG[0] + n_long * sub.deg_sampling), 0.25]
+    )
+    radii_edge = sub.get_dem_radius_from_lat_lon(lat_probe, lon_probe)
+    assert radii_edge is not None
+    assert radii_edge[0] == ref_radii[q, 0]
+    assert radii_edge[1] == sub.dummy_value
 
 
 def test_str(dem: tuple[MOLA128, npt.NDArray[np.int16]]) -> None:
