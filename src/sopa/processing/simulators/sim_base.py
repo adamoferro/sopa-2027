@@ -26,12 +26,147 @@ alignment of the track, and dispatch of the per-frame computation to the
 format-specific simulation callback.
 """
 
+import concurrent.futures
+import multiprocessing
+import os
 from typing import Any
 
 import numpy as np
 import numpy.typing as npt
 
+from sopa.geometry.coordinate_converter import CoordinateConverter as cc
+from sopa.processing.focusers.sofa import (
+    _available_memory_bytes,
+    _max_memory_limited_pool_workers,
+    _pool_worker_initializer,
+)
 from sopa.processing.utils import ProcessingUtils
+
+# Simulation data handed to the parallel frame simulation (phase-6 P6): set by
+# _SIMBase.simulate before the fork-based pool is created and resolved by the
+# workers through fork copy-on-write, so the multi-GB DEM object and the
+# per-track arrays are never pickled through submit().
+_FORK_SIMULATION_CONTEXT: Any | None = None
+
+
+def _alt_unit_vector_carry(
+    orbit_xyz: tuple[
+        npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]
+    ],
+    previous_frame: int,
+) -> npt.NDArray[np.float64]:
+    """Computes the along-track unit vector that the serial simulation loop carries from the simulated frame `previous_frame` into the following one: the unit vector of the spacecraft-position difference between `previous_frame` and its successor, exactly the value `_simulate_frame_range` computes for a non-final frame."""
+    return cc.unit_vector(
+        np.array(
+            [
+                [[orbit_xyz[0][previous_frame + 1] - orbit_xyz[0][previous_frame]]],
+                [[orbit_xyz[1][previous_frame + 1] - orbit_xyz[1][previous_frame]]],
+                [[orbit_xyz[2][previous_frame + 1] - orbit_xyz[2][previous_frame]]],
+            ]
+        )
+    )
+
+
+def _pool_simulate_frame_range(
+    range_id: int, n_ranges: int, *range_parameters: Any
+) -> Any:
+    """Worker-side entry point of the parallel frame simulation: resolves the shared simulation data from the fork-inherited module reference (never from pickled arguments) and runs the same `_simulate_frame_range` operation sequence as the serial path for one frame range, with the worker-side progress prints suppressed because the parent prints the per-range progress."""
+    if _FORK_SIMULATION_CONTEXT is None:
+        raise RuntimeError(
+            "ERROR: the fork-inherited simulation data reference is not set; "
+            "_pool_simulate_frame_range must run in a worker forked after "
+            "_SIMBase.simulate set it."
+        )
+    (
+        sim_callback,
+        orbit_xyz,
+        sim_n_samples,
+        local_direction_g,
+        UTMNorthing_g,
+        UTMEasting_g,
+        UTMZone_g,
+        input_scr_data_shifts_alignment_t,
+        dem_obj,
+        geom_obj,
+        alt_sim_matrix,
+        act_sim_matrix,
+        roi_img,
+    ) = _FORK_SIMULATION_CONTEXT
+    (
+        range_start,
+        range_stop,
+        rxwin_ref,
+        dt,
+        gaussian_filter_sigma,
+        further_pars,
+        alt_unit_vector_carry,
+    ) = range_parameters
+    return sim_callback(
+        range_id,
+        n_ranges,
+        orbit_xyz,
+        np.arange(range_start, range_stop),
+        sim_n_samples,
+        local_direction_g,
+        UTMNorthing_g,
+        UTMEasting_g,
+        UTMZone_g,
+        rxwin_ref,
+        input_scr_data_shifts_alignment_t,
+        dt,
+        dem_obj,
+        geom_obj,
+        alt_sim_matrix,
+        act_sim_matrix,
+        gaussian_filter_sigma,
+        further_pars,
+        roi_img,
+        alt_unit_vector_carry=alt_unit_vector_carry,
+        verbose=False,
+    )
+
+
+def _assemble_range_results(
+    range_results: list[tuple[Any, ...]],
+) -> tuple[
+    npt.NDArray[np.float64],
+    npt.NDArray[np.uint8],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    tuple[dict[int, npt.NDArray[np.float64]], ...],
+]:
+    """Assembles the per-frame-range simulation results into the whole-track outputs: the image blocks and first-return values are concatenated in frame order (the per-frame writes are column-disjoint, so the result is independent of the range partition), and the per-range ROI dictionaries are merged key by key in frame order."""
+    sim_image = np.concatenate([result[0] for result in range_results], axis=1)
+    uncert_image = np.concatenate([result[1] for result in range_results], axis=1)
+    first_return_lats = np.concatenate([result[2] for result in range_results])
+    first_return_lons = np.concatenate([result[3] for result in range_results])
+    ground_distance_min_image = np.concatenate(
+        [result[4] for result in range_results], axis=1
+    )
+    ground_distance_max_image = np.concatenate(
+        [result[5] for result in range_results], axis=1
+    )
+    roi_pos: list[dict[int, npt.NDArray[np.float64]]] = []
+    for roi_dict_index in range(len(range_results[0][6])):
+        merged: dict[int, npt.NDArray[np.float64]] = {}
+        for result in range_results:
+            for roi_id, values in result[6][roi_dict_index].items():
+                if roi_id in merged:
+                    merged[roi_id] = np.concatenate((merged[roi_id], values))
+                else:
+                    merged[roi_id] = values
+        roi_pos.append(merged)
+    return (
+        sim_image,
+        uncert_image,
+        first_return_lats,
+        first_return_lons,
+        ground_distance_min_image,
+        ground_distance_max_image,
+        tuple(roi_pos),
+    )
 
 
 class _SIMBase:
@@ -42,10 +177,13 @@ class _SIMBase:
     the track to UTM to estimate the local ground direction, and hands the
     per-frame computation to the subclass' static `_simulate_frame_range`
     callback. With `simulate_chirp` the simulated image is convolved with
-    the synthetic chirp (pulse compression). Frames are processed serially;
-    `n_processes` is accepted for interface compatibility, but only serial
-    processing is implemented (the 2026 port removed the ray-based parallel
-    branch).
+    the synthetic chirp (pulse compression). With `n_processes` = 1 (the
+    default) the frames run serially in a single call, which is the original
+    processing path; with `n_processes` above 1 the selected frames are
+    partitioned into contiguous ranges (derived per requested process by
+    `_define_frame_ranges`) and the ranges are dispatched to a fork-based
+    process pool whose worker count is capped by the CPU count and the
+    memory-based worker budget, with the results assembled in frame order.
     """
 
     _C = 299792458.0
@@ -91,16 +229,11 @@ class _SIMBase:
             self._skip_meters = None
         self._n_half_aperture_frames = param_obj.frame_half_aperture
 
-        # 2026 port: parallel processing based on "ray" has been removed.
-        # Only serial processing is implemented for now; a new parallelization
-        # approach is still to be decided. The n_processes argument is kept
-        # for interface compatibility and ignored (values > 1 fall back to 1).
-        if n_processes > 1:
-            print(
-                "NOTICE: parallelization is currently not implemented (ray removed). Working with 1 process."
-            )
-            n_processes = 1
-        elif n_processes < 1:
+        # Parallel frame simulation is implemented again since phase-6 P6: a
+        # fork-based process pool over the frame ranges (see simulate()).
+        # Values < 1 fall back to 1; 1 keeps the original serial path, which
+        # is the exact pre-P6 processing code.
+        if n_processes < 1:
             n_processes = 1
 
         self.n_processes = n_processes
@@ -327,7 +460,7 @@ class _SIMBase:
         ]
         | None
     ):
-        """Runs the simulation over the selected frames through `sim_callback` and returns the simulated image, its uncertainty mask, the first-return lat/lon, the ground-distance min/max images and the ROI positions; returns None on input errors."""
+        """Runs the simulation over the selected frames through `sim_callback` and returns the simulated image, its uncertainty mask, the first-return lat/lon, the ground-distance min/max images and the ROI positions; returns None on input errors. With n_processes above 1 the per-frame-range simulation is dispatched to a fork-based process pool (worker count capped by the CPU count and the memory-based worker budget) and the outputs are assembled in frame order, which leaves them independent of the worker count; the frame ranges are derived per requested process, so a smaller effective worker count only queues more ranges."""
 
         pre_simulate_output = self._pre_simulate(orbit_data)
         if pre_simulate_output is not None:
@@ -405,15 +538,9 @@ class _SIMBase:
 
         orbit_xyz = (input_scx_data, input_scy_data, input_scz_data)
 
-        # 2026 port: the "ray"-based parallel branch has been removed.
-        # Frames are now always simulated serially in a single call.
-        # (The serial code below is the original, unchanged processing path.)
-        if self.n_processes > 1:
-            print(
-                "ERROR: parallel processing is not implemented anymore (ray removed). Use n_processes=1."
-            )
-            return None
-        else:
+        if self.n_processes == 1:
+            # Serial simulation: the original, unchanged processing path (the
+            # fidelity gate runs this path).
             (
                 self.sim_image,
                 self.uncert_image,
@@ -443,6 +570,168 @@ class _SIMBase:
                 further_pars,
                 self.roi_img,
             )
+        else:
+            # Parallel frame simulation (phase-6 P6). The frame partition is
+            # derived per requested process, so a worker count capped down by
+            # the CPU count or the memory budget only queues more (smaller)
+            # ranges; fewer workers than requested is the memory-safe
+            # direction.
+            sub_frame_range_starts, sub_frame_range_stops = self._define_frame_ranges(
+                n_frames_to_be_simulated
+            )
+            n_ranges = len(sub_frame_range_starts)
+
+            range_parameters: list[tuple[Any, ...]] = []
+            for range_id in np.arange(n_ranges):
+                range_start = int(sub_frame_range_starts[range_id])
+                range_stop = int(sub_frame_range_stops[range_id])
+                # The along-track unit vector of the track's last simulated
+                # frame is reused from the previous simulated frame inside
+                # `_simulate_frame_range`; a range starting exactly at that
+                # frame is handed the value the serial loop would have
+                # carried into it (a pure function of orbit_xyz).
+                if range_start == 0:
+                    alt_unit_vector_carry = None
+                else:
+                    alt_unit_vector_carry = _alt_unit_vector_carry(
+                        orbit_xyz, range_start - 1
+                    )
+                range_parameters.append(
+                    (
+                        range_start,
+                        range_stop,
+                        rxwin_ref,
+                        self.dt,
+                        self.gaussian_filter_sigma,
+                        further_pars,
+                        alt_unit_vector_carry,
+                    )
+                )
+
+            # Effective worker count: the requested n_processes, capped by
+            # the CPU count and the memory-based worker budget (the P5
+            # formula and constants, conservative for the simulators'
+            # ~200-250 MB per-worker peaks). A cap down to 1 runs the serial
+            # per-range loop below.
+            available_memory_bytes = _available_memory_bytes()
+            memory_worker_cap = (
+                _max_memory_limited_pool_workers(
+                    os.process_cpu_count(), available_memory_bytes
+                )
+                if available_memory_bytes is not None
+                else os.process_cpu_count()
+            )
+            n_workers = min(self.n_processes, memory_worker_cap)
+
+            range_results: list[Any] = []
+            if n_workers > 1:
+                # The pool uses the explicit fork context so the workers
+                # inherit the DEM object and the per-track arrays
+                # copy-on-write (with the default forkserver start method the
+                # multi-GB DEM would have to be pickled per task). The fork
+                # happens at the first submit, before any frame compute of
+                # this simulation run, and the worker initializer pins each
+                # worker to one OpenBLAS thread.
+                global _FORK_SIMULATION_CONTEXT
+                _FORK_SIMULATION_CONTEXT = (
+                    sim_callback,
+                    orbit_xyz,
+                    self._N_OUTPUT_SAMPLES,
+                    local_direction_g,
+                    UTMNorthing_g,
+                    UTMEasting_g,
+                    UTMZone_g,
+                    input_scr_data_shifts_alignment_t,
+                    self.dem_obj,
+                    self.geom_obj,
+                    self.alt_sim_matrix,
+                    self.act_sim_matrix,
+                    self.roi_img,
+                )
+                print(
+                    f"Simulating {n_ranges} frame range(s) on {n_workers} worker "
+                    f"processes (requested: {self.n_processes})."
+                )
+                with concurrent.futures.ProcessPoolExecutor(
+                    max_workers=n_workers,
+                    mp_context=multiprocessing.get_context("fork"),
+                    initializer=_pool_worker_initializer,
+                ) as executor:
+                    range_futures = [
+                        executor.submit(
+                            _pool_simulate_frame_range,
+                            range_id,
+                            n_ranges,
+                            *(range_parameters[range_id]),
+                        )
+                        for range_id in np.arange(n_ranges)
+                    ]
+                    # Indexed futures: the results are collected in frame
+                    # (range) order, never in completion order.
+                    for range_id, range_future in enumerate(range_futures):
+                        range_results.append(range_future.result())
+                        print(
+                            f"PROCESSED RANGE {range_id} ({range_id + 1}/{n_ranges}):"
+                            f" simulated local frames"
+                            f" {int(sub_frame_range_starts[range_id])}"
+                            f" to {int(sub_frame_range_stops[range_id]) - 1}"
+                            f" ({int(sub_frame_range_stops[range_id] - sub_frame_range_starts[range_id])} frame(s))"
+                        )
+            else:
+                for range_id in np.arange(n_ranges):
+                    (
+                        range_start,
+                        range_stop,
+                        rxwin_ref,
+                        dt,
+                        gaussian_filter_sigma,
+                        further_pars,
+                        alt_unit_vector_carry,
+                    ) = range_parameters[range_id]
+                    range_results.append(
+                        sim_callback(
+                            range_id,
+                            n_ranges,
+                            orbit_xyz,
+                            np.arange(range_start, range_stop),
+                            self._N_OUTPUT_SAMPLES,
+                            local_direction_g,
+                            UTMNorthing_g,
+                            UTMEasting_g,
+                            UTMZone_g,
+                            rxwin_ref,
+                            input_scr_data_shifts_alignment_t,
+                            dt,
+                            self.dem_obj,
+                            self.geom_obj,
+                            self.alt_sim_matrix,
+                            self.act_sim_matrix,
+                            gaussian_filter_sigma,
+                            further_pars,
+                            self.roi_img,
+                            alt_unit_vector_carry=alt_unit_vector_carry,
+                            verbose=False,
+                        )
+                    )
+                    print(
+                        f"PROCESSED RANGE {range_id} ({range_id + 1}/{n_ranges}):"
+                        f" simulated local frames {range_start}"
+                        f" to {range_stop - 1} ({range_stop - range_start} frame(s))"
+                    )
+
+            # Assemble in frame order: the per-frame writes are column-disjoint
+            # by construction and the ROI accumulations are concatenated per
+            # key in frame order, so the assembled results do not depend on
+            # the range partition or the workers' completion order.
+            (
+                self.sim_image,
+                self.uncert_image,
+                self.first_return_lats,
+                self.first_return_lons,
+                self.ground_distance_min_image,
+                self.ground_distance_max_image,
+                self.roi_pos,
+            ) = _assemble_range_results(range_results)
 
         if (len(self.roi_pos) < 5) and self.SIMULATE_CHIRP:
             self._simulate_chirp()

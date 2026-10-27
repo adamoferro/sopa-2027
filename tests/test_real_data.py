@@ -53,6 +53,7 @@ from sopa.plot_utils.radargrams import GroundDistancePlot, RadargramPlot, Simula
 from sopa.plot_utils.tracks import TrackAndFirstReturnsPlotOnDEM, TrackPlotOnDEM
 from sopa.processing.focusers.sofa import SOFA
 from sopa.processing.parameters import FocuserParameters, SimulatorParameters
+from sopa.processing.simulators.drssim import dRSsim
 from sopa.processing.simulators.sfrssim import sfRSsim
 
 DATA_DIR = Path("/mnt/SOPA/DATA")
@@ -350,3 +351,161 @@ def test_focus_process_count_invariance(
     )
 
     assert out_two_processes.tobytes() == out_one_process.tobytes()
+
+
+@dataclass(frozen=True)
+class SimulationInputs:
+    """Shared inputs of the simulator process-count invariance tests."""
+
+    orbit_data: dict[str, npt.NDArray[np.float64] | float]
+    dem: MOLA128
+
+
+@pytest.fixture(scope="session")
+def simulation_inputs() -> SimulationInputs:
+    """Loads the EDR orbit data (ancillary data only, no echo data needed for
+    the simulation) and the MOLA128 DEM once for the simulator
+    process-count invariance tests; the DEM read dominates the fixture cost."""
+    lg = logger(verbose=True)
+    d = EDR_PDS(
+        dataset_name=EDR_PDS_INPUT_DATASET_NAME,
+        filename_base=EDR_PDS_INPUT_FILENAME_BASE,
+        logger=lg,
+    )
+    d.load(mode="ancillary")
+    d.generate_orbit_data()
+    assert d.orbit_data is not None
+
+    m = MOLA128(filename_base=MOLA128_FILENAME_BASE)
+    m.read()
+    return SimulationInputs(orbit_data=d.orbit_data, dem=m)
+
+
+def _simulate_with_engine(
+    engine: type[sfRSsim] | type[dRSsim],
+    n_processes: int,
+    orbit_data: dict[str, npt.NDArray[np.float64] | float],
+    dem: MOLA128,
+) -> tuple[npt.NDArray[np.float64], ...]:
+    """Runs one simulator engine over the reduced real-data range and returns
+    the full simulate() result tuple."""
+    sim_pars = SimulatorParameters(
+        frame_start=FRAME_START,
+        frame_end=FRAME_END,
+        meters_skip=METERS_SKIP,
+        frame_half_aperture=FRAME_HALF_APERTURE,
+        squint_angle=SQUINT_ANGLE,
+    )
+    if engine is dRSsim:
+        # mirror run_matrix.py: the matrix loads no instrument object, so the
+        # dRSsim engine is constructed with the chirp convolution disabled
+        simulator = engine(
+            geom_obj=MARS_IAU2000(),
+            dem_obj=dem,
+            param_obj=sim_pars,
+            n_processes=n_processes,
+            simulate_chirp=False,
+        )
+    else:
+        simulator = engine(
+            geom_obj=MARS_IAU2000(),
+            dem_obj=dem,
+            param_obj=sim_pars,
+            n_processes=n_processes,
+        )
+    result = simulator.simulate(orbit_data)
+    assert result is not None
+    return result
+
+
+def _assert_simulation_results_byte_equal(
+    serial_result: tuple[npt.NDArray[np.float64], ...],
+    parallel_result: tuple[npt.NDArray[np.float64], ...],
+    engine_name: str,
+) -> None:
+    """Asserts byte equality of the full simulate() results: images, first
+    returns, ground distances and the ROI dictionaries (keys in first-appearance
+    order, values concatenated in frame order)."""
+    product_names = (
+        "sim_image",
+        "uncert_image",
+        "first_return_lats",
+        "first_return_lons",
+        "ground_distance_min_image",
+        "ground_distance_max_image",
+    )
+    for product_index, product_name in enumerate(product_names):
+        assert (
+            serial_result[product_index].tobytes()
+            == parallel_result[product_index].tobytes()
+        ), (
+            f"{engine_name}: {product_name} differs between n_processes=1 and n_processes=2"
+        )
+
+    assert len(serial_result[6]) == len(parallel_result[6])
+    for roi_dict_index, (serial_dicts, parallel_dicts) in enumerate(
+        zip(serial_result[6], parallel_result[6])
+    ):
+        assert list(serial_dicts.keys()) == list(parallel_dicts.keys()), (
+            f"{engine_name}: ROI dict {roi_dict_index} keys differ"
+        )
+        for roi_id, serial_values in serial_dicts.items():
+            assert serial_values.tobytes() == parallel_dicts[roi_id].tobytes(), (
+                f"{engine_name}: ROI dict {roi_dict_index} values for id {roi_id} differ"
+            )
+
+
+def test_sfrssim_process_count_invariance(
+    simulation_inputs: SimulationInputs, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Checks that simulating with n_processes=2 (the fork-based worker pool
+    of the phase-6 P6 reactivation) produces byte-identical products to the
+    serial n_processes=1 path on the same real-data range. The pool workers
+    reach the DEM and the per-track arrays through fork copy-on-write and run
+    the same per-frame operation sequence, and the outputs are assembled in
+    frame order, so not a single byte may differ. This is the end-to-end pin
+    of the simulator n_processes reactivation for the sfRSsim engine."""
+    orbit_data = simulation_inputs.orbit_data
+    dem = simulation_inputs.dem
+
+    serial_result = _simulate_with_engine(sfRSsim, 1, orbit_data, dem)
+    capsys.readouterr()  # discard the serial run's progress output
+
+    parallel_result = _simulate_with_engine(sfRSsim, 2, orbit_data, dem)
+    pool_line_match = re.search(
+        r"Simulating (\d+) frame range\(s\) on 2 worker processes",
+        capsys.readouterr().out,
+    )
+    assert pool_line_match is not None, "no worker-pool line in the output"
+    assert int(pool_line_match.group(1)) >= 2, (
+        "n_processes=2 did not split the range into multiple frame ranges"
+    )
+
+    _assert_simulation_results_byte_equal(serial_result, parallel_result, "sfRSsim")
+
+
+def test_drssim_process_count_invariance(
+    simulation_inputs: SimulationInputs, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Checks that simulating with n_processes=2 (the fork-based worker pool
+    of the phase-6 P6 reactivation) produces byte-identical products to the
+    serial n_processes=1 path on the same real-data range, for the dRSsim
+    engine (constructed with simulate_chirp=False, mirroring the fidelity
+    matrix's run script, which loads no instrument object)."""
+    orbit_data = simulation_inputs.orbit_data
+    dem = simulation_inputs.dem
+
+    serial_result = _simulate_with_engine(dRSsim, 1, orbit_data, dem)
+    capsys.readouterr()  # discard the serial run's progress output
+
+    parallel_result = _simulate_with_engine(dRSsim, 2, orbit_data, dem)
+    pool_line_match = re.search(
+        r"Simulating (\d+) frame range\(s\) on 2 worker processes",
+        capsys.readouterr().out,
+    )
+    assert pool_line_match is not None, "no worker-pool line in the output"
+    assert int(pool_line_match.group(1)) >= 2, (
+        "n_processes=2 did not split the range into multiple frame ranges"
+    )
+
+    _assert_simulation_results_byte_equal(serial_result, parallel_result, "dRSsim")

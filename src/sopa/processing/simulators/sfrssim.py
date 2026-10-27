@@ -144,6 +144,9 @@ class sfRSsim(_SIMBase):
         gaussian_filter_sigma: int,
         further_pars: list[float],
         roi_img: npt.NDArray | None = None,
+        *,
+        alt_unit_vector_carry: npt.NDArray[np.float64] | None = None,
+        verbose: bool = True,
     ) -> tuple[
         npt.NDArray[np.float64],
         npt.NDArray[np.uint8],
@@ -158,7 +161,7 @@ class sfRSsim(_SIMBase):
             dict[int, npt.NDArray[np.float64]],
         ],
     ]:
-        """Per-frame facet computation described in the class docstring: surface-grid DEM sampling, facet normals/approximate areas, two-way travel times, image accumulation, and first-return/ground-distance/ROI bookkeeping."""
+        """Per-frame facet computation described in the class docstring: surface-grid DEM sampling, facet normals/approximate areas, two-way travel times, image accumulation, and first-return/ground-distance/ROI bookkeeping. With `alt_unit_vector_carry` the along-track unit vector is seeded with the value the serial loop would have carried into the range's first frame (needed only when a partitioned range starts exactly at the track's last simulated frame, which reuses the previous frame's value); the per-frame progress prints run only with `verbose` (the parallel paths call this with `verbose=False` and the parent prints the per-range progress instead)."""
         cos_exp = further_pars[0]
 
         _C = 299792458.0
@@ -177,6 +180,14 @@ class sfRSsim(_SIMBase):
         roi_ias = dict()
         roi_alt_ias = dict()
 
+        # The track's last simulated frame does not recompute the along-track
+        # unit vector but reuses the value from the previous simulated frame;
+        # a range partitioned off exactly at that frame is seeded with the
+        # carried value by the parent (within a range the loop below reuses
+        # its own previous value, exactly as the serial loop does).
+        if alt_unit_vector_carry is not None:
+            alt_unit_vector = alt_unit_vector_carry
+
         status_str_pre = f"\t{'|\t\t' * id}"
         status_str_post = "\t\t|" * (n_processes - id - 1)
         last_status = -1
@@ -186,7 +197,8 @@ class sfRSsim(_SIMBase):
             else:
                 new_status = int(count / n_frames_to_be_simulated * 20) * 5
             if new_status != last_status:
-                print(f"{status_str_pre}{new_status:>2}{status_str_post}")
+                if verbose:
+                    print(f"{status_str_pre}{new_status:>2}{status_str_post}")
                 last_status = new_status
 
             # *************************

@@ -30,10 +30,12 @@ uncertainty mask.
 
 import numpy as np
 import numpy.typing as npt
+import pytest
 
 from sopa.dem.mola.mola import MOLA128
 from sopa.geometry.coordinate_converter import MARS_IAU2000
 from sopa.processing.parameters import SimulatorParameters
+from sopa.processing.simulators import sim_base as sim_base_module
 from sopa.processing.simulators.sfrssim import sfRSsim
 
 N_FRAMES = 12
@@ -72,7 +74,7 @@ def _orbit_data() -> dict[str, npt.NDArray[np.float64] | float]:
     }
 
 
-def _make_sim() -> sfRSsim:
+def _make_sim(n_processes: int = 1, roi_img: npt.NDArray | None = None) -> sfRSsim:
     """Builds an sfRSsim instance with the across/along-track grids shrunk to
     keep the unit run fast (the matrices are per-instance attributes)."""
     sim = sfRSsim(
@@ -83,7 +85,8 @@ def _make_sim() -> sfRSsim:
             frame_end=FRAME_END,
             frame_half_aperture=N_HALF_APERTURE,
         ),
-        n_processes=1,
+        n_processes=n_processes,
+        roi_img=roi_img,
     )
     alt = np.arange(-250.0, 250.0 + 12.5, 12.5)
     act = np.arange(-2500.0, 2500.0 + 25.0, 25.0)
@@ -143,3 +146,44 @@ def test_simulation_produces_weighted_energy() -> None:
     assert isinstance(roi_pos, tuple) and len(roi_pos) == 4
     for roi_dict in roi_pos:
         assert isinstance(roi_dict, dict) and len(roi_dict) == 0
+
+
+def test_process_count_partition_invariance_with_last_frame_carry(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Checks the phase-6 frame-range partition on the synthetic scene with
+    the worker pool capped down to one effective worker: the requested
+    n_processes still derives the partition (one range per frame here), the
+    ROI-incidence bookkeeping exercises the along-track unit vector at every
+    frame including the track's last simulated frame (which reuses the
+    previous frame's value, carried in by the parent for the range starting
+    at it), and the assembled result is byte-equal to the serial single-call
+    result."""
+    monkeypatch.setattr(
+        sim_base_module,
+        "_max_memory_limited_pool_workers",
+        lambda cpu_count, available_memory_bytes: 1,
+    )
+    roi_img = np.zeros((3, N_FRAMES), dtype="int32")
+    roi_img[1, :] = 1
+    roi_img[2, ::3] = 2
+
+    serial_result = _make_sim(roi_img=roi_img).simulate(_orbit_data())
+    assert serial_result is not None
+    capsys.readouterr()  # discard the serial run's progress output
+
+    partitioned_result = _make_sim(n_processes=N_SIMULATED, roi_img=roi_img).simulate(
+        _orbit_data()
+    )
+    assert partitioned_result is not None
+    assert "PROCESSED RANGE 0 (1/8)" in capsys.readouterr().out
+
+    for serial_part, partitioned_part in zip(serial_result, partitioned_result):
+        if isinstance(serial_part, tuple):
+            for serial_dict, partitioned_dict in zip(serial_part, partitioned_part):
+                assert list(serial_dict.keys()) == list(partitioned_dict.keys())
+                for roi_id, serial_values in serial_dict.items():
+                    assert serial_values.tobytes() == partitioned_dict[roi_id].tobytes()
+        else:
+            assert serial_part.tobytes() == partitioned_part.tobytes()

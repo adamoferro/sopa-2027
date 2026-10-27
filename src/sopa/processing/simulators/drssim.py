@@ -134,6 +134,9 @@ class dRSsim(_SIMBase):
         gaussian_filter_sigma: int,
         further_pars: list[float] = [],
         roi_img: npt.NDArray | None = None,
+        *,
+        alt_unit_vector_carry: npt.NDArray[np.float64] | None = None,
+        verbose: bool = True,
     ) -> tuple[
         npt.NDArray[np.float64],
         npt.NDArray[np.uint8],
@@ -143,7 +146,7 @@ class dRSsim(_SIMBase):
         npt.NDArray[np.float64],
         tuple[dict[int, npt.NDArray[np.float64]], dict[int, npt.NDArray[np.float64]]],
     ]:
-        """Per-frame point computation described in the class docstring: surface-grid DEM sampling, two-way travel times, image accumulation, and first-return/ground-distance/ROI bookkeeping."""
+        """Per-frame point computation described in the class docstring: surface-grid DEM sampling, two-way travel times, image accumulation, and first-return/ground-distance/ROI bookkeeping. `alt_unit_vector_carry` is accepted for a uniform parallel dispatch signature but unused by this engine (dRSsim computes no along-track unit vector); the per-frame progress prints run only with `verbose` (the parallel paths call this with `verbose=False` and the parent prints the per-range progress instead)."""
         _C = 299792458.0
 
         n_frames_to_be_simulated = len(frame_range)
@@ -167,7 +170,8 @@ class dRSsim(_SIMBase):
             else:
                 new_status = int(count / n_frames_to_be_simulated * 10) * 10
             if new_status != last_status:
-                print(f"{status_str_pre}{new_status:>2}{status_str_post}")
+                if verbose:
+                    print(f"{status_str_pre}{new_status:>2}{status_str_post}")
                 last_status = new_status
 
             local_direction = local_direction_g[i_frame_tbs]

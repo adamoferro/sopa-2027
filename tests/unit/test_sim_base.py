@@ -25,8 +25,13 @@
 exercised through a minimal concrete subclass with a trivial per-frame
 callback: constructor validation and normalization, frame selection by frame
 skip and by meters skip, the output-image sizing (set and unset receive-window
-times), the chirp convolution, and the subprocess frame-range split.
+times), the chirp convolution, the subprocess frame-range split, the
+n_processes clamping of the phase-6 parallel reactivation, and the
+parallel-dispatch machinery (result assembly and the single-worker frame-range
+partition invariance).
 """
+
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -35,7 +40,12 @@ import pytest
 from sopa.geometry.coordinate_converter import MARS_IAU2000
 from sopa.input.sharad.instrument import SHARAD
 from sopa.processing.parameters import SimulatorParameters
-from sopa.processing.simulators.sim_base import _SIMBase
+from sopa.processing.simulators import sim_base as sim_base_module
+from sopa.processing.simulators.sim_base import (
+    _alt_unit_vector_carry,
+    _assemble_range_results,
+    _SIMBase,
+)
 
 N_FRAMES = 12
 DEFAULT_DT = 37.5e-9
@@ -59,7 +69,7 @@ class _RecordingCallback:
     one-spike image plus empty bookkeeping."""
 
     def __init__(self) -> None:
-        self.calls: list[dict[str, float | int]] = []
+        self.calls: list[dict[str, Any]] = []
 
     def __call__(
         self,
@@ -82,6 +92,9 @@ class _RecordingCallback:
         gaussian_filter_sigma: int,
         further_pars: list[float],
         roi_img: npt.NDArray | None = None,
+        *,
+        alt_unit_vector_carry: npt.NDArray[np.float64] | None = None,
+        verbose: bool = True,
     ) -> tuple[
         npt.NDArray[np.float64],
         npt.NDArray[np.uint8],
@@ -94,7 +107,17 @@ class _RecordingCallback:
         """Records the call and returns a spike image with zero ancillary data."""
         n_frames = len(frame_range)
         self.calls.append(
-            {"sim_n_samples": sim_n_samples, "dt": dt, "n_frames": n_frames}
+            {
+                "sim_n_samples": sim_n_samples,
+                "dt": dt,
+                "n_frames": n_frames,
+                "range_start": int(frame_range[0]),
+                "range_stop": int(frame_range[-1]) + 1,
+                "verbose": verbose,
+                "carry_shape": None
+                if alt_unit_vector_carry is None
+                else alt_unit_vector_carry.shape,
+            }
         )
         sim_image = np.zeros([sim_n_samples, n_frames])
         sim_image[0, :] = 1.0
@@ -121,12 +144,13 @@ class _TrivialSim(_SIMBase):
         callback: _RecordingCallback,
         simulate_chirp: bool = False,
         instr_obj: object = None,
+        n_processes: int = 1,
     ) -> None:
         super().__init__(
             geom_obj,
             dem_obj,
             param_obj,
-            n_processes=1,
+            n_processes=n_processes,
             simulate_chirp=simulate_chirp,
             instr_obj=instr_obj,
         )
@@ -170,15 +194,18 @@ def _orbit_data(
     }
 
 
-def test_constructor_normalizes_n_processes(capsys: pytest.CaptureFixture[str]) -> None:
-    """Checks that n_processes above one falls back to one with a notice and
-    values below one are raised to one silently."""
+def test_constructor_n_processes_clamping(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Checks the n_processes interface since the parallel reactivation:
+    values below one fall back to one, one is kept, values above one are
+    preserved, and the constructor prints no notice in any case (the former
+    parallelization-is-not-implemented notice is gone)."""
     pars = SimulatorParameters(frame_start=0, frame_end=1)
-    base_high = _SIMBase(MARS_IAU2000(), _ConstDEM(), pars, n_processes=4)
-    assert "NOTICE" in capsys.readouterr().out
-    assert base_high.n_processes == 1
-    base_low = _SIMBase(MARS_IAU2000(), _ConstDEM(), pars, n_processes=0)
-    assert base_low.n_processes == 1
+    for requested, expected in ((-3, 1), (0, 1), (1, 1), (4, 4)):
+        base = _SIMBase(MARS_IAU2000(), _ConstDEM(), pars, n_processes=requested)
+        assert base.n_processes == expected
+        assert capsys.readouterr().out == ""
 
 
 def test_chirp_requires_instrument() -> None:
@@ -295,7 +322,10 @@ def test_chirp_convolution() -> None:
 
 
 def test_define_frame_ranges() -> None:
-    """Checks the subprocess frame-range split for serial processing."""
+    """Checks the frame-range split: one full range for the serial default,
+    and contiguous ceiling-sized ranges covering every frame exactly once for
+    a requested process count above one (the parallel dispatch partitions
+    per requested process, never per effective worker)."""
     sim = _TrivialSim(
         MARS_IAU2000(),
         _ConstDEM(),
@@ -305,3 +335,136 @@ def test_define_frame_ranges() -> None:
     starts, stops = sim._define_frame_ranges(10)
     np.testing.assert_array_equal(starts, [0])
     np.testing.assert_array_equal(stops, [10])
+
+    sim_parallel = _SIMBase(
+        MARS_IAU2000(),
+        _ConstDEM(),
+        SimulatorParameters(frame_start=0, frame_end=1),
+        n_processes=4,
+    )
+    starts, stops = sim_parallel._define_frame_ranges(10)
+    np.testing.assert_array_equal(starts, [0, 3, 6, 9])
+    np.testing.assert_array_equal(stops, [3, 6, 9, 10])
+
+
+def test_alt_unit_vector_carry_shape_and_values() -> None:
+    """Checks the parent-side along-track carry computation: the unit vector
+    of the spacecraft-position difference between the previous simulated
+    frame and its successor, in the (3, 1, 1) layout the worker loop uses."""
+    cc = MARS_IAU2000()
+    rng = np.random.default_rng(7)
+    x, y, z = (rng.random(6) + 3000.0 for _ in range(3))
+    carry = _alt_unit_vector_carry((x, y, z), 2)
+    assert carry.shape == (3, 1, 1)
+    expected = cc.unit_vector(
+        np.array(
+            [
+                [[x[3] - x[2]]],
+                [[y[3] - y[2]]],
+                [[z[3] - z[2]]],
+            ]
+        )
+    )
+    assert carry.tobytes() == expected.tobytes()
+
+
+def test_assemble_range_results_frame_order() -> None:
+    """Checks the parallel-result assembly: image blocks and first-return
+    values concatenate in frame order and the per-range ROI dictionaries
+    merge key by key in frame order, reproducing exactly the values and the
+    key order of a single-call (serial) result."""
+    first = (
+        np.array([[1.0, 2.0], [3.0, 4.0]]),
+        np.zeros((2, 2), dtype="uint8"),
+        np.array([10.0, 11.0]),
+        np.array([20.0, 21.0]),
+        np.array([[np.nan, 1.0], [np.nan, 2.0]]),
+        np.array([[np.nan, 5.0], [np.nan, 6.0]]),
+        ({7: np.array([1.0, 2.0]), 3: np.array([9.0])}, {}),
+    )
+    second = (
+        np.array([[5.0, 6.0], [7.0, 8.0]]),
+        np.ones((2, 2), dtype="uint8"),
+        np.array([12.0, 13.0]),
+        np.array([22.0, 23.0]),
+        np.array([[3.0, np.nan], [4.0, np.nan]]),
+        np.array([[7.0, np.nan], [8.0, np.nan]]),
+        ({7: np.array([3.0]), 3: np.array([8.0, 10.0])}, {}),
+    )
+
+    (
+        sim_image,
+        uncert_image,
+        first_return_lats,
+        first_return_lons,
+        ground_distance_min_image,
+        ground_distance_max_image,
+        roi_pos,
+    ) = _assemble_range_results([first, second])
+
+    np.testing.assert_array_equal(
+        sim_image, [[1.0, 2.0, 5.0, 6.0], [3.0, 4.0, 7.0, 8.0]]
+    )
+    assert (
+        uncert_image.tobytes()
+        == np.array([[0, 0, 1, 1], [0, 0, 1, 1]], dtype="uint8").tobytes()
+    )
+    np.testing.assert_array_equal(first_return_lats, [10.0, 11.0, 12.0, 13.0])
+    np.testing.assert_array_equal(first_return_lons, [20.0, 21.0, 22.0, 23.0])
+    np.testing.assert_array_equal(
+        ground_distance_min_image,
+        [[np.nan, 1.0, 3.0, np.nan], [np.nan, 2.0, 4.0, np.nan]],
+    )
+    np.testing.assert_array_equal(
+        ground_distance_max_image,
+        [[np.nan, 5.0, 7.0, np.nan], [np.nan, 6.0, 8.0, np.nan]],
+    )
+    assert list(roi_pos[0].keys()) == [7, 3]  # first-appearance order
+    np.testing.assert_array_equal(roi_pos[0][7], [1.0, 2.0, 3.0])
+    np.testing.assert_array_equal(roi_pos[0][3], [9.0, 8.0, 10.0])
+    assert roi_pos[1] == {}
+
+
+def test_single_worker_partition_invariance(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Checks the phase-6 parallel dispatch with the worker pool capped down
+    to one effective worker: the requested partition is still derived from
+    the requested process count (here one range per frame, which also routes
+    the last frame's along-track carry through the parent-side computation),
+    each range runs silently, and the assembled result equals the serial
+    single-call result."""
+    monkeypatch.setattr(
+        sim_base_module,
+        "_max_memory_limited_pool_workers",
+        lambda cpu_count, available_memory_bytes: 1,
+    )
+    pars = SimulatorParameters(frame_start=2, frame_end=8, frame_half_aperture=2)
+
+    serial_callback = _RecordingCallback()
+    serial_sim = _TrivialSim(MARS_IAU2000(), _ConstDEM(), pars, serial_callback)
+    serial_result = serial_sim.simulate(_orbit_data())
+    assert serial_result is not None
+    assert len(serial_callback.calls) == 1
+
+    partitioned_callback = _RecordingCallback()
+    partitioned_sim = _TrivialSim(
+        MARS_IAU2000(), _ConstDEM(), pars, partitioned_callback, n_processes=6
+    )
+    partitioned_result = partitioned_sim.simulate(_orbit_data())
+    assert partitioned_result is not None
+
+    assert len(partitioned_callback.calls) == 6  # ceil(6/6)=1 frame per range
+    assert [call["range_start"] for call in partitioned_callback.calls] == list(
+        range(6)
+    )
+    assert all(not call["verbose"] for call in partitioned_callback.calls)
+    assert partitioned_callback.calls[0]["carry_shape"] is None
+    assert partitioned_callback.calls[1]["carry_shape"] == (3, 1, 1)
+    assert partitioned_callback.calls[-1]["carry_shape"] == (3, 1, 1)
+
+    for serial_part, partitioned_part in zip(serial_result, partitioned_result):
+        if isinstance(serial_part, tuple):
+            assert len(serial_part) == len(partitioned_part)
+            for serial_dict, partitioned_dict in zip(serial_part, partitioned_part):
+                assert list(serial_dict.keys()) == list(partitioned_dict.keys())
+        else:
+            assert serial_part.tobytes() == partitioned_part.tobytes()
