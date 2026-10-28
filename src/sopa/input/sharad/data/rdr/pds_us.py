@@ -161,7 +161,17 @@ class RDR(RSData):
 
     def _load_rdr_data(self, start_frame: int = 0, end_frame: int = -1) -> bool | None:
         """
-        Read PDS US RDR data (filenames in the form s_xxxxxxxx_rgram.img)
+        Read PDS US RDR data (filenames in the form s_xxxxxxxx_rgram.img) into
+        self._data as a (frames, samples) float64 matrix. The .img file is
+        stored sample-major: 3600 range-sample rows, each row holding one
+        PC_REAL (float32) value per frame (label-derived ground truth for
+        s_01260201: RECORD_BYTES = 18872 = 4718 x 4, LINES = 3600,
+        LINE_SAMPLES = 4718, and 3600 x 4718 x 4 bytes = the exact file size,
+        with the _geom.tab rows matching the 4718 frames 1:1). The file is
+        therefore read whole, reshaped to (samples, frames), transposed to
+        (frames, samples) and sliced afterwards; this holds one extra float32
+        copy of the full radargram in memory (~68 MB for s_01260201) instead
+        of seeking per request.
         - start_frame and end_frame can be in the range [0, OBS_NUMBER_OF_FRAMES-1]
             (Python array indexing convention)
         - end_frame == -1 means "all the frames starting from start_frame"
@@ -169,22 +179,21 @@ class RDR(RSData):
             available data are returned without any error or warning
         - if an error occurs, the function returns False
         """
-        N_SAMPLES = 3600
-        frame_count = -1
+        N_SAMPLES = 3600  # range samples per frame (SHARAD series convention)
         if start_frame < 0 or (end_frame != -1 and start_frame > end_frame):
             self.logger.log_messages(log_messages.ERR_MESSAGES["data_frame-limits"])
             return None
-        elif end_frame != -1:
-            frame_count = end_frame - start_frame
         try:
             with open(self._DATA_FILENAME, "rb") as fp:
-                fp.seek(start_frame * N_SAMPLES)
-                rdr_data = (
-                    np.fromfile(fp, dtype=np.float32, count=frame_count * N_SAMPLES)
-                    .reshape((3600, -1))
-                    .astype("float64")
+                total_frames = Path(self._DATA_FILENAME).stat().st_size // (
+                    N_SAMPLES * np.dtype(np.float32).itemsize
                 )
-                self._data = rdr_data
+                frames_major = (
+                    np.fromfile(fp, dtype=np.float32).reshape((N_SAMPLES, -1)).T
+                )
+                if end_frame == -1:
+                    end_frame = total_frames  # "all the frames from start_frame"
+                self._data = frames_major[start_frame:end_frame].astype("float64")
                 return True
         except OSError:
             self.logger.log_messages(log_messages.ERR_MESSAGES["data_read"])

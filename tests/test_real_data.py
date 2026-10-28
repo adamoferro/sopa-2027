@@ -46,6 +46,7 @@ import pytest
 from sopa.dem.mola.mola import MOLA128
 from sopa.geometry.coordinate_converter import MARS_IAU2000
 from sopa.input.sharad.data.edr.pds import EDR as EDR_PDS
+from sopa.input.sharad.data.rdr.pds_us import RDR as RDR_PDS_US
 from sopa.input.sharad.instrument import SHARAD
 from sopa.io_utils import envi
 from sopa.log.log import logger
@@ -68,6 +69,9 @@ EDR_PDS_INPUT_FILENAME_BASE = (
     "/mnt/SOPA/DATA/sharad/EDR/PDS/edr1260201/e_1260201_001_ss19_700_a"
 )
 EDR_PDS_INPUT_DATASET_NAME = "edr1260201"
+RDR_US_PDS_INPUT_FILENAME_BASE = (
+    "/mnt/SOPA/DATA/sharad/RDR/PDS-US/RDR/s_01260201/s_01260201"
+)
 EDR_PDS_OUTPUT_SIM_FILENAME_BASE = "/mnt/SOPA/OUTPUT/PDS/PDS-EDR-1260201_SIM_test"
 EDR_PDS_OUTPUT_FOC_FILENAME_BASE = "/mnt/SOPA/OUTPUT/PDS/PDS-EDR-1260201_FOC_test"
 OUTPUT_PDS_DIR = Path("/mnt/SOPA/OUTPUT/PDS")
@@ -509,3 +513,23 @@ def test_drssim_process_count_invariance(
     )
 
     _assert_simulation_results_byte_equal(serial_result, parallel_result, "dRSsim")
+
+
+def test_rdr_us_radargram_orientation() -> None:
+    """Checks the US-team PDS RDR reader against the real s_01260201 product:
+    with the verified sample-major layout, the radargram loads as a (frames,
+    samples) matrix of (4718, 3600), matching the PDS label (LINES = 3600
+    range-sample rows, LINE_SAMPLES = 4718 frame columns) and the 4718 rows
+    of the geometric table."""
+    lg = logger(verbose=True)
+    d = RDR_PDS_US(
+        dataset_name="s_01260201",
+        filename_base=RDR_US_PDS_INPUT_FILENAME_BASE,
+        logger=lg,
+    )
+    assert d.load(mode="full") is True
+    assert d.n_frames == 4718
+    data = d.data
+    assert data is not None
+    assert data.shape == (4718, 3600)
+    assert data.dtype == np.dtype("float64")
