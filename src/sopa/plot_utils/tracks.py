@@ -28,6 +28,7 @@ from the DEM sampling.
 
 from typing import Any
 
+import matplotlib
 import matplotlib.patches as mpatches
 import numpy as np
 import numpy.typing as npt
@@ -324,7 +325,7 @@ class TrackAndROIReturnsPlotOnDEM(TrackPlotOnDEM):
                     legend_patches.append(mpatches.Patch(color=color_base, label=ir))
                 pp.legend(handles=legend_patches)
             else:
-                cmap_base = matplotlib.colormaps["seismic"]  # noqa: F821 (matplotlib is deliberately not imported; this alt-angle branch carries the same latent NameError as the SOPA_2026 reference, kept for reference parity)
+                cmap_base = matplotlib.colormaps["seismic"]
                 for ir in roi_x:
                     alpha = 1 - (self._roi_ias[ir] / self.ref_max_angle)
                     alpha[alpha < 0] = 0

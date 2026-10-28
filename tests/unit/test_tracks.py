@@ -132,14 +132,12 @@ def test_roi_plot_alpha_coded(
     assert len(plt.get_fignums()) == 1
 
 
-def test_roi_plot_alt_angle_coded_raises_nameerror(
+def test_roi_plot_alt_angle_coded(
     dem: MOLA128, track: tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]
 ) -> None:
-    """Documents the current behavior of the ROI plot color/alpha-coded by the
-    along-track incidence angle: the plot branch references the matplotlib
-    module without importing it, so plot() raises NameError. The same defect
-    is present in the frozen SOPA_2026 baseline (inherited behavior; flagged
-    for the technical-debt page)."""
+    """Checks the ROI plot color/alpha-coded by the along-track incidence
+    angle (four position components, plot_alt_angle=True): the alternate-angle
+    branch completes and exactly one figure is produced."""
     lats, lons = track
     alt_ias = np.linspace(-0.005, 0.005, N_POINTS)
     roi_pos: tuple[dict[int, npt.NDArray[np.float64]], ...] = (
@@ -148,6 +146,5 @@ def test_roi_plot_alt_angle_coded_raises_nameerror(
         {1: np.zeros(N_POINTS)},
         {1: alt_ias},
     )
-    plotter = TrackAndROIReturnsPlotOnDEM(dem, lats, lons, roi_pos, plot_alt_angle=True)
-    with pytest.raises(NameError):
-        plotter.plot()
+    TrackAndROIReturnsPlotOnDEM(dem, lats, lons, roi_pos, plot_alt_angle=True).plot()
+    assert len(plt.get_fignums()) == 1
