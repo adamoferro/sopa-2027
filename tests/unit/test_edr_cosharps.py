@@ -25,7 +25,8 @@
 and its companion log-message module), on a tiny synthetic dataset: tab-
 separated header parsing and validation, aux-file consistency, orbit-table
 reading with cubic interpolation to the frame times, 8-bit raw data loading,
-housekeeping telemetry parsing, and the hole-filling helper.
+housekeeping telemetry parsing, and the hole-filling helper. One realdata-
+marked test additionally loads the ancillary data of a real CO-SHARPS product.
 """
 
 from pathlib import Path
@@ -81,7 +82,9 @@ def _write_dataset(
         "\n".join(f"{f}\t{v}" for f, v in fields) + "\n"
     )
     aux_lines = [
-        f"{float(i):.1f},{1000.0 + 10.0 * float(i):.1f},0" for i in range(n_aux_rows)
+        # third column "not_used": real products carry float values there (e.g. "0.000")
+        f"{float(i):.1f},{1000.0 + 10.0 * float(i):.1f},0.000"
+        for i in range(n_aux_rows)
     ]
     (directory / "e_test_Aux_001.csv").write_text("\n".join(aux_lines) + "\n")
     (directory / "e_test_HK.dat").write_text("# no telemetry here\n")
@@ -189,6 +192,22 @@ def test_generate_orbit_data(tmp_path: Path) -> None:
     assert orbit["dt"] == 3 / 80e6
 
 
+def test_aux_float_not_used_column(tmp_path: Path) -> None:
+    """Checks that an aux file whose third, not-used column carries float
+    values (as in the real CO-SHARPS products, e.g. "0.000") parses with the
+    two used columns intact."""
+    _write_dataset(tmp_path)
+    d, _ = _make_edr(tmp_path)
+    assert d.load(mode="ancillary") is True
+    aux = d._aux_data
+    assert aux is not None
+    assert aux.dtype.names == ("time_offset_s", "rxwin_time_us")
+    assert aux.dtype["time_offset_s"] == np.dtype("float64")
+    assert aux.dtype["rxwin_time_us"] == np.dtype("float64")
+    np.testing.assert_allclose(aux["time_offset_s"], AUX_TIME_OFFSETS)
+    np.testing.assert_allclose(aux["rxwin_time_us"], AUX_RXWIN_US)
+
+
 def test_aux_consistency_failure(tmp_path: Path) -> None:
     """Checks that a frame-count mismatch between header and aux file stops
     the ancillary load."""
@@ -280,3 +299,28 @@ def test_fill_data_holes_keeps_valid_values() -> None:
     data = np.array([5.0, 6.0, 0.0, 0.0, 2.0])
     filled = EDR._fill_data_holes(data)
     np.testing.assert_allclose(filled, [5.0, 6.0, 6.0, 2.0, 2.0])
+
+
+DATA_DIR = Path("/mnt/SOPA/DATA")
+COSHARPS_OBS_FILENAME_BASE = (
+    "/mnt/SOPA/DATA/sharad/EDR/CO-SHARPS/OBS_4837301000_1/OBS_4837301000_1"
+)
+
+
+@pytest.mark.realdata
+@pytest.mark.skipif(not DATA_DIR.is_dir(), reason="SOPA real data not present")
+def test_realdata_aux_file_loads() -> None:
+    """Checks the ancillary load of a real CO-SHARPS product (OBS_4837301000,
+    91995 frames): header, aux file (float values in the third, not-used
+    column) and orbit file parse with consistent frame counts."""
+    lg = logger(verbose=False)
+    d = EDR(
+        dataset_name="OBS_4837301000_1",
+        filename_base=COSHARPS_OBS_FILENAME_BASE,
+        logger=lg,
+    )
+    assert d.load(mode="ancillary") is True
+    assert d.n_frames == 91995
+    aux = d._aux_data
+    assert aux is not None
+    assert len(aux) == d.n_frames

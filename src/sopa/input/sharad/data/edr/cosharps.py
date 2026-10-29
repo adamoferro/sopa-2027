@@ -306,11 +306,12 @@ class EDR(RSData):
 
     def _read_raw_data_aux_file(self) -> npt.NDArray | None:
         try:
+            # real products carry float values in the not_used column (e.g. "0.000")
             aux_data = np.loadtxt(
                 self._AUX_FILENAME,
                 dtype={
                     "names": ("time_offset_s", "rxwin_time_us", "not_used"),
-                    "formats": ("d", "d", "i4"),
+                    "formats": ("d", "d", "d"),
                 },
                 delimiter=",",
             )
