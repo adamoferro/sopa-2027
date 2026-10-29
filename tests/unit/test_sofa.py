@@ -433,6 +433,83 @@ def test_focus_tiny_run_unweighted(stub_data: _StubRawData) -> None:
     assert np.sum(output) > 0
 
 
+def test_focus_progress_callback_multi_block(stub_data: _StubRawData) -> None:
+    """Checks the focus() progress callback on a serial multi-block run
+    (read_block_size_max 3 caps the 14 processed frames to blocks of 3, which
+    yields one focused frame per block, 7 blocks for arange(3, 10)): the
+    focus()-passed callback (which takes precedence over the constructor's)
+    receives the initial partition report at 0.0 and one report per completed
+    block at (blocks completed)/7, a monotonically non-decreasing sequence
+    ending at 1.0, with non-empty notes, while the constructor's callback
+    receives nothing."""
+    pars = FocuserParameters(
+        frame_start=3,
+        frame_end=10,
+        frame_half_aperture=N_HALF_APERTURE,
+        squint_angle=0,
+    )
+    reports: list[tuple[float, str]] = []
+    unused_reports: list[tuple[float, str]] = []
+    f = SOFA(
+        SHARAD(),
+        MARS_IAU2000(),
+        np.full(N_FRAMES, 3396000, dtype="int32"),
+        stub_data,
+        pars,
+        n_processes=1,
+        read_block_size_max=3,
+        progress_callback=lambda fraction, note: unused_reports.append(
+            (fraction, note)
+        ),
+    )
+    output = f.focus(
+        progress_callback=lambda fraction, note: reports.append((fraction, note))
+    )
+    assert output is not None
+    assert output.shape == (667 * 2, 7)
+    fractions = [fraction for fraction, _ in reports]
+    assert fractions == [0.0] + [i / 7 for i in range(1, 8)]
+    assert all(note for _, note in reports)
+    assert unused_reports == []
+
+
+def test_focus_progress_callback_output_identical(stub_data: _StubRawData) -> None:
+    """Checks that the progress callback is call-only on the same tiny run as
+    test_focus_tiny_run (default block size, one block): the run driven with a
+    constructor-provided recording callback returns an output array equal
+    (np.array_equal) to the run without any callback, and the callback
+    received exactly the partition report at 0.0 and the block report at
+    1.0."""
+    pars = FocuserParameters(
+        frame_start=3,
+        frame_end=10,
+        frame_half_aperture=N_HALF_APERTURE,
+        squint_angle=0,
+    )
+    output_without_callback = SOFA(
+        SHARAD(),
+        MARS_IAU2000(),
+        np.full(N_FRAMES, 3396000, dtype="int32"),
+        stub_data,
+        pars,
+        n_processes=1,
+    ).focus()
+    reports: list[tuple[float, str]] = []
+    output_with_callback = SOFA(
+        SHARAD(),
+        MARS_IAU2000(),
+        np.full(N_FRAMES, 3396000, dtype="int32"),
+        stub_data,
+        pars,
+        n_processes=1,
+        progress_callback=lambda fraction, note: reports.append((fraction, note)),
+    ).focus()
+    assert output_without_callback is not None
+    assert output_with_callback is not None
+    assert np.array_equal(output_with_callback, output_without_callback)
+    assert [fraction for fraction, _ in reports] == [0.0, 1.0]
+
+
 def test_block_focus_chunked_matches_per_column_loop(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

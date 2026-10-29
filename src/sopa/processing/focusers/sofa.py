@@ -35,6 +35,7 @@ import ctypes
 import multiprocessing
 import os
 import re
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -171,7 +172,11 @@ class SOFA:
     are processed serially, with values above 1 they are dispatched to a
     fork-based process pool whose worker count is capped by the CPU count and
     by a memory-based worker budget, the workers sharing the raw data with
-    the parent copy-on-write.
+    the parent copy-on-write. An optional progress callback (constructor
+    keyword progress_callback, or a per-call override as the focus()
+    argument) receives coarse progress reports during focus(); it is
+    call-only — it never influences the numerical processing — and its
+    absence leaves the code path byte-identical.
     """
 
     _C = 299792458.0
@@ -186,6 +191,8 @@ class SOFA:
         n_processes: int = 1,
         read_block_size_max: int = 5000,
         debug_mode: bool = False,
+        *,
+        progress_callback: Callable[[float, str], None] | None = None,
     ) -> None:
         self.geom_obj = geom_obj
         self.data_obj = data_obj
@@ -274,6 +281,8 @@ class SOFA:
 
         self.n_processes = n_processes
 
+        self.progress_callback = progress_callback
+
         # gaussian filter parameters
         #   power coefficients
         self._gf_power_coefficients = list()
@@ -333,8 +342,29 @@ class SOFA:
                     "np." + awfs + "(self._n_aperture_frames)"
                 )
 
-    def focus(self) -> npt.NDArray[np.float64] | None:
-        """Focuses the selected frames and returns the output image (one column per focused frame); validates the frame range against the input data and computes the actual frame selection (skip in frames or meters, aperture extent and squint offset), returning None on invalid ranges. With n_processes above 1 the per-block focus is dispatched to a fork-based process pool (worker count capped by the CPU count and the memory-based worker budget) and the output is assembled in block order, which leaves it independent of the worker count; the block size is derived per requested process, so a smaller effective worker count only queues more blocks."""
+    def focus(
+        self, *, progress_callback: Callable[[float, str], None] | None = None
+    ) -> npt.NDArray[np.float64] | None:
+        """Focuses the selected frames and returns the output image (one column per focused frame); validates the frame range against the input data and computes the actual frame selection (skip in frames or meters, aperture extent and squint offset), returning None on invalid ranges. With n_processes above 1 the per-block focus is dispatched to a fork-based process pool (worker count capped by the CPU count and the memory-based worker budget) and the output is assembled in block order, which leaves it independent of the worker count; the block size is derived per requested process, so a smaller effective worker count only queues more blocks.
+
+        The optional keyword-only progress_callback (a callable taking a
+        fraction in [0, 1] and a short note string; when omitted, the
+        constructor's callback applies, and this argument takes precedence
+        over it when both are given) receives coarse progress reports: one
+        call with fraction 0.0 once the frame selection and block partition
+        are computed, then one call per completed focus block with the
+        fraction (blocks completed)/(total blocks), reaching 1.0 with the
+        last block. The fractions are monotonically non-decreasing; the
+        callback is invoked only in the parent process — the pool workers
+        never call it, and it is never passed across the fork boundary. When
+        focus() returns None on an invalid frame range the callback is not
+        called. Exceptions raised by the callback propagate to the caller and
+        abort the focus run. The callback is call-only: it never influences
+        the numerical processing, and without one (the default) the code path
+        is byte-identical to the previous behavior.
+        """
+        if progress_callback is None:
+            progress_callback = self.progress_callback
 
         if self._frames_to_be_focused_end >= self._n_input_frames:
             print("ERROR: last frame to be focused after the end of the input data.")
@@ -656,6 +686,9 @@ class SOFA:
                 )
             )
 
+        if progress_callback is not None:
+            progress_callback(0.0, "frame selection and block partition computed")
+
         # Effective worker count: the requested n_processes, capped by the
         # CPU count and the memory-based worker budget. A cap down to 1 runs
         # the serial branch below (the exact pre-P5 processing path); a cap
@@ -717,10 +750,17 @@ class SOFA:
                         f" to {int(focused_frames_in_block[-1])}"
                         f" ({len(focused_frames_in_block)} frame(s))"
                     )
+                    if progress_callback is not None:
+                        progress_callback(
+                            float((block_id + 1) / n_blocks),
+                            f"focused block {block_id + 1}/{n_blocks}",
+                        )
         else:
             output_image[:, 0 : n_frames_to_be_focused_per_block[0]] = (
                 SOFA._block_focus(0, *(input_parameters[0]), self.data_obj)
             )
+            if progress_callback is not None:
+                progress_callback(1.0 / n_blocks, f"focused block 1/{n_blocks}")
             for block_id in np.arange(1, n_blocks):
                 output_image[
                     :,
@@ -733,6 +773,11 @@ class SOFA:
                     *(input_parameters[block_id]),
                     self.data_obj,
                 )
+                if progress_callback is not None:
+                    progress_callback(
+                        float((block_id + 1) / n_blocks),
+                        f"focused block {int(block_id) + 1}/{n_blocks}",
+                    )
 
         return output_image
 
