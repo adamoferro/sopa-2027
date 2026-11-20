@@ -25,10 +25,49 @@
 processing chain.
 """
 
+import math
+
 # TODO:
-# - express half aperture in seconds or meters (when expressed in frames it depends on presumming)
+# - express half aperture in meters (when expressed in frames it depends on
+#   presumming; seconds are supported via FocuserParameters.coherence_time_s)
 # - check correctness of parameters
 # - add Doppler max search and adjacent Doppler windows (as in SOFA "original")
+
+
+def half_aperture_frames_from_coherence_time(
+    coherence_time_s: float, pri_data_s: float
+) -> int:
+    """Converts a requested coherence time in seconds into the
+    synthetic-aperture half length in frames for data sampled with the
+    per-frame interval pri_data_s (the data PRI multiplied by the presumming
+    factor): the half length is the floor of
+    coherence_time_s / (2 * pri_data_s), so the resulting odd aperture
+    length of 2 * half + 1 frames (center frame included) has an achieved
+    coherence time of 2 * half * pri_data_s that never exceeds the requested
+    one. Raises ValueError when coherence_time_s or pri_data_s is not
+    strictly positive (a non-positive pri_data_s means the data carry no
+    usable PRI: check that the data declare a PRI and the presumming
+    factor), or when the requested time is below the minimum coherence time
+    of 2 * pri_data_s (one frame on each side of the center frame).
+    """
+    if coherence_time_s <= 0:
+        raise ValueError(
+            f"ERROR: coherence_time_s must be > 0, got {coherence_time_s!r} s."
+        )
+    if pri_data_s <= 0:
+        raise ValueError(
+            f"ERROR: pri_data_s must be > 0, got {pri_data_s!r} s (the data "
+            "carry no usable PRI: check that the data declare a PRI and the "
+            "presumming factor)."
+        )
+    half = math.floor(coherence_time_s / (2.0 * pri_data_s))
+    if half < 1:
+        raise ValueError(
+            f"ERROR: coherence_time_s={coherence_time_s!r} s is below the "
+            f"minimum coherence time {2 * pri_data_s!r} s (= 2 * pri_data_s) "
+            f"for pri_data_s={pri_data_s!r} s: no aperture frame fits."
+        )
+    return int(half)
 
 
 class _BaseProcessingParameters:
@@ -93,7 +132,7 @@ class SimulatorParameters(_BaseProcessingParameters):
 
 
 class FocuserParameters(_BaseProcessingParameters):
-    """Parameter set for the focuser: adds the multilooking Doppler bandwidth, the range-migration and Doppler-phase compensation switches, the azimuth weighting window, and the Gaussian-filter multilooking decomposition (number of filters and alpha coefficient)."""
+    """Parameter set for the focuser: adds the multilooking Doppler bandwidth, the range-migration and Doppler-phase compensation switches, the azimuth weighting window, and the Gaussian-filter multilooking decomposition (number of filters and alpha coefficient). The synthetic-aperture half length is given either in frames (frame_half_aperture, the frames mode, default 768: odd aperture length of 2 * frame_half_aperture + 1 frames) or in seconds as a coherence time (coherence_time_s, mutually exclusive with frame_half_aperture): in the time mode the frame_half_aperture attribute reads 0, frame_start is not clamped at construction, and the focuser resolves the half aperture in frames from the requested time against the data PRI after presumming, then clamps frame_start to it."""
 
     def __init__(
         self,
@@ -101,7 +140,8 @@ class FocuserParameters(_BaseProcessingParameters):
         frame_end: int = -1,
         frame_skip: int = 1,
         meters_skip: float | None = None,
-        frame_half_aperture: int = 768,
+        frame_half_aperture: int | None = None,
+        coherence_time_s: float | None = None,
         squint_angle: float = 0,
         multilooking_doppler_bandwidth: float = 0.8,
         correct_range_migration: bool = True,
@@ -113,6 +153,8 @@ class FocuserParameters(_BaseProcessingParameters):
         gauss_rec_n_filters: int = 0,
         gauss_rec_alpha: float = 0.66,
     ) -> None:
+        # frame_half_aperture               frames, None in the coherence-time mode
+        # coherence_time_s                  seconds, None in the frames mode
         # multilooking_doppler_bandwidth    Hz
         # correct_range_migration           boolean
         # compensate_doppler_phase          boolean
@@ -121,16 +163,35 @@ class FocuserParameters(_BaseProcessingParameters):
         # gauss_rec_n_filters               int >= 0
         # gauss_rec_alpha                   float > 0
 
+        if frame_half_aperture is not None and coherence_time_s is not None:
+            raise ValueError(
+                f"ERROR: frame_half_aperture ({frame_half_aperture!r} frames) "
+                f"and coherence_time_s ({coherence_time_s!r} s) are mutually "
+                "exclusive: give the half aperture in frames or the coherence "
+                "time in seconds, not both."
+            )
+        if coherence_time_s is not None and coherence_time_s <= 0:
+            raise ValueError(
+                f"ERROR: coherence_time_s must be > 0, got {coherence_time_s!r} s."
+            )
+        if frame_half_aperture is not None and frame_half_aperture < 0:
+            raise ValueError(
+                f"ERROR: frame_half_aperture must be >= 0, got {frame_half_aperture!r}."
+            )
+
         super().__init__(
             frame_start,
             frame_end,
             frame_skip,
             meters_skip,
-            frame_half_aperture,
+            768
+            if (frame_half_aperture is None and coherence_time_s is None)
+            else (0 if coherence_time_s is not None else frame_half_aperture),
             squint_angle,
             range_weighting_function,
             range_weighting_kaiser_beta,
         )
+        self.coherence_time_s = coherence_time_s
         self.multilooking_doppler_bandwidth = multilooking_doppler_bandwidth
         self.correct_range_migration = correct_range_migration
         self.compensate_doppler_phase = compensate_doppler_phase

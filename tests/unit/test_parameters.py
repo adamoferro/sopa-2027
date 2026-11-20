@@ -24,10 +24,18 @@
 """Unit tests of the processing parameter containers
 (sopa.processing.parameters): defaults, the frame_start clamp against the
 synthetic-aperture half length, the meters-skip priority over the frame skip,
-and the focuser-specific additions.
+the focuser-specific additions, and the coherence-time aperture specification
+(the seconds-to-frames conversion helper and the mutually exclusive focuser
+aperture modes).
 """
 
-from sopa.processing.parameters import FocuserParameters, SimulatorParameters
+import pytest
+
+from sopa.processing.parameters import (
+    FocuserParameters,
+    SimulatorParameters,
+    half_aperture_frames_from_coherence_time,
+)
 
 
 def test_simulator_parameters_defaults() -> None:
@@ -110,3 +118,70 @@ def test_focuser_parameters_custom_values() -> None:
     assert p.azimuth_weighting_function == "hamming"
     assert p.gauss_rec_n_filters == 4
     assert p.gauss_rec_alpha == 0.5
+
+
+def test_half_aperture_frames_from_coherence_time_floor_rule() -> None:
+    """Checks the seconds-to-frames conversion rule: the half aperture is the
+    floor of the requested coherence time over twice the per-frame interval,
+    so the achieved coherence time of the resulting odd frame length
+    2 * half + 1 never exceeds the request."""
+    assert half_aperture_frames_from_coherence_time(1.0, 0.25) == 2
+    assert half_aperture_frames_from_coherence_time(1.1, 0.25) == 2
+    assert half_aperture_frames_from_coherence_time(0.99, 0.25) == 1
+
+
+def test_half_aperture_frames_rejects_invalid_inputs() -> None:
+    """Checks the ValueError cases of the seconds-to-frames conversion: a
+    non-positive requested coherence time, a non-positive per-frame
+    interval, and a requested time below the minimum coherence time
+    2 * pri_data_s."""
+    with pytest.raises(ValueError):
+        half_aperture_frames_from_coherence_time(0.0, 0.25)
+    with pytest.raises(ValueError):
+        half_aperture_frames_from_coherence_time(-1.0, 0.25)
+    with pytest.raises(ValueError):
+        half_aperture_frames_from_coherence_time(1.0, 0.0)
+    with pytest.raises(ValueError):
+        half_aperture_frames_from_coherence_time(1.0, -0.25)
+    with pytest.raises(ValueError):
+        half_aperture_frames_from_coherence_time(0.3, 0.25)
+
+
+def test_focuser_parameters_frames_mode_defaults() -> None:
+    """Checks the focuser frames mode: the default half aperture of 768
+    frames with the usual frame_start clamp, and the coherence time
+    unset."""
+    p = FocuserParameters()
+    assert p.frame_half_aperture == 768
+    assert p.frame_start == 768
+    assert p.coherence_time_s is None
+
+
+def test_focuser_parameters_coherence_time_mode() -> None:
+    """Checks the focuser coherence-time mode: the requested time is stored,
+    the frame_half_aperture attribute reads 0, and frame_start is kept as
+    given instead of being clamped at construction."""
+    p = FocuserParameters(frame_start=10, coherence_time_s=0.5)
+    assert p.coherence_time_s == 0.5
+    assert p.frame_half_aperture == 0
+    assert p.frame_start == 10
+
+
+def test_focuser_parameters_rejects_conflicting_specs() -> None:
+    """Checks that giving both aperture specifications, the half aperture in
+    frames and the coherence time in seconds, raises ValueError."""
+    with pytest.raises(ValueError):
+        FocuserParameters(frame_half_aperture=64, coherence_time_s=0.5)
+
+
+def test_focuser_parameters_rejects_invalid_values() -> None:
+    """Checks the ValueError cases of the focuser parameters: a non-positive
+    coherence time and a negative frame half aperture, while a zero half
+    aperture stays valid."""
+    with pytest.raises(ValueError):
+        FocuserParameters(coherence_time_s=0.0)
+    with pytest.raises(ValueError):
+        FocuserParameters(coherence_time_s=-1.0)
+    with pytest.raises(ValueError):
+        FocuserParameters(frame_half_aperture=-1)
+    assert FocuserParameters(frame_half_aperture=0).frame_half_aperture == 0

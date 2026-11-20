@@ -43,6 +43,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.ndimage import gaussian_filter1d
 
+from sopa.processing.parameters import half_aperture_frames_from_coherence_time
 from sopa.processing.utils import ProcessingUtils
 
 # Number of aperture frames per batched ifft call in _block_focus. The batch
@@ -244,6 +245,13 @@ class SOFA:
 
         # ----------- CALCULATED PARAMETERS -----------
         self._pri_data = self._pri * self._presumming
+        if param_obj.coherence_time_s is not None:
+            self._n_half_aperture_frames = half_aperture_frames_from_coherence_time(
+                param_obj.coherence_time_s, self._pri_data
+            )
+            self._frames_to_be_focused_start = max(
+                [self._frames_to_be_focused_start, self._n_half_aperture_frames]
+            )
         self._n_aperture_frames = (
             2 * self._n_half_aperture_frames + 1
         )  # center sample is included and in the middle of aperture

@@ -24,9 +24,10 @@
 """Unit tests of the SOFA focuser (sopa.processing.focusers.sofa): the raw-data
 type validation, the derived focusing parameters (coherence time, Doppler
 window, Gaussian-filter multilook decomposition, weighting windows), the
-frame-range validation of focus(), a small end-to-end focus run on a tiny
-synthetic raw dataset, and the byte-identity of the chunked aperture loop in
-_block_focus across chunk sizes.
+coherence-time aperture resolution against the data PRI, the frame-range
+validation of focus(), a small end-to-end focus run on a tiny synthetic raw
+dataset, and the byte-identity of the chunked aperture loop in _block_focus
+across chunk sizes.
 """
 
 import os
@@ -239,6 +240,33 @@ def test_constructor_derived_parameters(stub_data: _StubRawData) -> None:
     assert f._gf_power_coefficients == []
     assert f._gf_std_devs == []
     assert f._SIZE_RANGE_FFT == 4096
+
+
+def test_constructor_resolves_coherence_time_aperture(
+    stub_data: _StubRawData,
+) -> None:
+    """Checks the coherence-time aperture spec: the focuser resolves the half
+    aperture in frames from the requested coherence time against the data PRI
+    after presumming (floor rule, achieved time never above the request),
+    clamps the frame start to the resolved half, and derives the same
+    aperture length and coherence time as the equivalent frames-mode
+    construction with the same half aperture."""
+    pars = FocuserParameters(frame_start=0, frame_end=1, coherence_time_s=0.15)
+    f = SOFA(
+        SHARAD(),
+        MARS_IAU2000(),
+        np.full(N_FRAMES, 3396000, dtype="int32"),
+        stub_data,
+        pars,
+    )
+    # 0.15 s / (2 * 1428e-6 * 16 s) = 3.28..., floored to 3 frames per side.
+    assert pars.frame_half_aperture == 0
+    assert pars.frame_start == 0
+    assert f._n_half_aperture_frames == 3
+    assert f._frames_to_be_focused_start == 3
+    assert f._n_aperture_frames == 2 * N_HALF_APERTURE + 1
+    assert f._coherence_time == pytest.approx((2 * N_HALF_APERTURE) * PRI * PRESUMMING)
+    assert f._coherence_time <= 0.15
 
 
 def test_constructor_gaussian_filter_decomposition(stub_data: _StubRawData) -> None:
