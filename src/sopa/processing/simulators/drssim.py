@@ -32,7 +32,10 @@ import numpy as np
 import numpy.typing as npt
 from scipy.ndimage import gaussian_filter
 
-from sopa.processing.simulators.sim_base import _SIMBase
+from sopa.processing.simulators.sim_base import (
+    _sample_positions_to_int,
+    _SIMBase,
+)
 
 
 class dRSsim(_SIMBase):
@@ -231,10 +234,13 @@ class dRSsim(_SIMBase):
             )
 
             t_surface = 2.0 * d_surface / _C
-            sample_pos_surface = np.round(
+            rounded_sample_pos_surface = np.round(
                 (t_surface - rxwin_ref + input_scr_data_shifts_alignment_t[i_frame_tbs])
                 / dt
-            ).astype("int")  # use rxwin_ref instead of input_rxwin_data_t_local
+            )  # use rxwin_ref instead of input_rxwin_data_t_local
+            sample_pos_surface = _sample_positions_to_int(
+                rounded_sample_pos_surface, sim_n_samples
+            )
 
             # set out-of-range sample positions to the farthest position (useful later for detecting the first-return position)
             sample_pos_surface[

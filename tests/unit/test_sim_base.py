@@ -26,9 +26,10 @@ exercised through a minimal concrete subclass with a trivial per-frame
 callback: constructor validation and normalization, frame selection by frame
 skip and by meters skip, the output-image sizing (set and unset receive-window
 times), the chirp convolution, the subprocess frame-range split, the
-n_processes clamping of the phase-6 parallel reactivation, and the
+n_processes clamping of the phase-6 parallel reactivation, the
 parallel-dispatch machinery (result assembly and the single-worker frame-range
-partition invariance).
+partition invariance), and the sample-position cast contract of the shared
+`_sample_positions_to_int` helper.
 """
 
 from typing import Any
@@ -44,6 +45,7 @@ from sopa.processing.simulators import sim_base as sim_base_module
 from sopa.processing.simulators.sim_base import (
     _alt_unit_vector_carry,
     _assemble_range_results,
+    _sample_positions_to_int,
     _SIMBase,
 )
 
@@ -468,3 +470,25 @@ def test_single_worker_partition_invariance(monkeypatch: pytest.MonkeyPatch) -> 
                 assert list(serial_dict.keys()) == list(partitioned_dict.keys())
         else:
             assert serial_part.tobytes() == partitioned_part.tobytes()
+
+
+def test_sample_positions_to_int_finite_in_range() -> None:
+    """Checks the cast contract for finite in-range positions: the already-rounded values are cast to int64 exactly, including the range edges 0 and sim_n_samples - 1."""
+    rounded_positions = np.array([[0.0, 1.0, 666.0, 1334.0]], dtype="float64")
+    result = _sample_positions_to_int(rounded_positions, 1335)
+    np.testing.assert_array_equal(result, np.array([[0, 1, 666, 1334]], dtype="int64"))
+    assert result.dtype == np.dtype("int64")
+
+
+def test_sample_positions_to_int_non_finite_become_sentinel() -> None:
+    """Checks the cast contract for non-finite positions (NaN, +inf, -inf): all of them become the sim_n_samples sentinel before the cast. This pins the cross-platform reason the helper exists: casting NaN to int yields INT64_MIN on x86-64 (masked to the sentinel by the former post-cast mask) but 0 on aarch64, which survives as a valid sample bin and corrupts the first-return selection over DEM holes."""
+    rounded_positions = np.array([[np.nan, np.inf, -np.inf]], dtype="float64")
+    result = _sample_positions_to_int(rounded_positions, 1335)
+    np.testing.assert_array_equal(result, np.full((1, 3), 1335, dtype="int64"))
+
+
+def test_sample_positions_to_int_out_of_range_become_sentinel() -> None:
+    """Checks the cast contract for finite out-of-range positions: negative values and values at or beyond sim_n_samples become the sentinel, the same replacement the call sites' post-cast mask applies."""
+    rounded_positions = np.array([[-1.0, -100.0, 1335.0, 1.0e9]], dtype="float64")
+    result = _sample_positions_to_int(rounded_positions, 1335)
+    np.testing.assert_array_equal(result, np.full((1, 4), 1335, dtype="int64"))

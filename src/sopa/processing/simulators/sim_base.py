@@ -169,6 +169,18 @@ def _assemble_range_results(
     )
 
 
+def _sample_positions_to_int(
+    rounded_positions: npt.NDArray[np.float64], sim_n_samples: int
+) -> npt.NDArray[np.int64]:
+    """Casts rounded fast-time sample positions to integer sample indices, replacing non-finite values and out-of-range values with the `sim_n_samples` sentinel before the cast: DEM-hole facets carry a NaN surface radius through the two-way-time computation to a NaN position, and casting NaN to int is platform-dependent (INT64_MIN on x86-64, 0 on aarch64), so non-finite values must never reach the cast."""
+    invalid_positions = (
+        ~np.isfinite(rounded_positions)
+        | (rounded_positions < 0)
+        | (rounded_positions >= sim_n_samples)
+    )
+    return np.where(invalid_positions, sim_n_samples, rounded_positions).astype("int")
+
+
 class _SIMBase:
     """Shared implementation of the clutter simulators.
 
