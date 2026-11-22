@@ -409,6 +409,86 @@ def test_focus_rejects_empty_range(
     assert "ERROR" in capsys.readouterr().out
 
 
+def test_focus_rejects_empty_selection_frames_equal_pair(
+    stub_data: _StubRawData, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Checks that a frames-mode selection that comes out empty stops the
+    focus with the refusal instead of crashing: frame_end equal to the
+    clamped frame start passes the range check (equal is not "before") but
+    the arange over start..end selects no frame."""
+    pars = FocuserParameters(
+        frame_start=0, frame_end=10, frame_half_aperture=10, squint_angle=0
+    )
+    f = SOFA(
+        SHARAD(),
+        MARS_IAU2000(),
+        np.full(N_FRAMES, 3396000, dtype="int32"),
+        stub_data,
+        pars,
+    )
+    assert f.focus() is None
+    assert "ERROR" in capsys.readouterr().out
+
+
+def test_focus_rejects_empty_selection_meters_skip(
+    stub_data: _StubRawData, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Checks that a meters-mode selection that comes out empty stops the
+    focus with the refusal instead of crashing. The real geometry helper
+    cannot return an empty selection today (a degenerate window fails
+    inside the helper with a ValueError on the interval statistics), so the
+    test stubs the helper to pin the refusal contract focus() must uphold
+    when the helper hands back no frame id."""
+    geom = SimpleNamespace(
+        get_frame_ids_from_skip_distance=lambda lat, lon, skip: (
+            np.array([], dtype="int64"),
+            0.0,
+            0.0,
+        )
+    )
+    pars = FocuserParameters(
+        frame_start=10,
+        frame_end=19,
+        meters_skip=2500.0,
+        frame_half_aperture=N_HALF_APERTURE,
+        squint_angle=0,
+    )
+    f = SOFA(
+        SHARAD(),
+        geom,
+        np.full(N_FRAMES, 3396000, dtype="int32"),
+        stub_data,
+        pars,
+    )
+    assert f.focus() is None
+    assert "ERROR" in capsys.readouterr().out
+
+
+def test_focus_meters_skip_tiny_run(stub_data: _StubRawData) -> None:
+    """Checks a meters-mode focus run with the real geometry helper on the
+    tiny dataset, against over-refusal: the ~9.5 km frame window at skip
+    5000 m selects two frames (window-relative ids 0 and 4), so the
+    empty-selection refusal does not fire and the output carries one column
+    per selected frame."""
+    pars = FocuserParameters(
+        frame_start=10,
+        frame_end=19,
+        meters_skip=5000.0,
+        frame_half_aperture=N_HALF_APERTURE,
+        squint_angle=0,
+    )
+    f = SOFA(
+        SHARAD(),
+        MARS_IAU2000(),
+        np.full(N_FRAMES, 3396000, dtype="int32"),
+        stub_data,
+        pars,
+    )
+    output = f.focus()
+    assert output is not None
+    assert output.shape[1] == 2
+
+
 def test_focus_tiny_run(stub_data: _StubRawData) -> None:
     """Checks a complete focus run on the tiny dataset: one output column per
     focused frame (arange(3, 10) = 7), all values finite and non-negative,

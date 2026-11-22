@@ -353,7 +353,7 @@ class SOFA:
     def focus(
         self, *, progress_callback: Callable[[float, str], None] | None = None
     ) -> npt.NDArray[np.float64] | None:
-        """Focuses the selected frames and returns the output image (one column per focused frame); validates the frame range against the input data and computes the actual frame selection (skip in frames or meters, aperture extent and squint offset), returning None on invalid ranges. With n_processes above 1 the per-block focus is dispatched to a fork-based process pool (worker count capped by the CPU count and the memory-based worker budget) and the output is assembled in block order, which leaves it independent of the worker count; the block size is derived per requested process, so a smaller effective worker count only queues more blocks.
+        """Focuses the selected frames and returns the output image (one column per focused frame); validates the frame range against the input data and computes the actual frame selection (skip in frames or meters, aperture extent and squint offset), returning None on invalid ranges and when the computed frame selection is empty. With n_processes above 1 the per-block focus is dispatched to a fork-based process pool (worker count capped by the CPU count and the memory-based worker budget) and the output is assembled in block order, which leaves it independent of the worker count; the block size is derived per requested process, so a smaller effective worker count only queues more blocks.
 
         The optional keyword-only progress_callback (a callable taking a
         fraction in [0, 1] and a short note string; when omitted, the
@@ -436,6 +436,10 @@ class SOFA:
                 )
             )
             frames_to_be_focused += self._frames_to_be_focused_start
+
+        if len(frames_to_be_focused) == 0:
+            print("ERROR: no frame to be focused in the selected range.")
+            return None
 
         # correction of the last frame to be focused
         self._frames_to_be_focused_end = frames_to_be_focused[-1]
