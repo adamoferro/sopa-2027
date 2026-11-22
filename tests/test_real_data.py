@@ -317,7 +317,12 @@ def test_focus_process_count_invariance(
     read_block_size_max. The pool workers reach the raw data through fork
     copy-on-write and run the same per-block operation sequence, and the
     output is assembled in block order, so not a single byte may differ. This
-    is the end-to-end pin of the n_processes reactivation."""
+    is the end-to-end pin of the n_processes reactivation. The pool is
+    memory-capped: the effective worker count printed on the pool line may
+    clamp below the request, down to the serial branch, which prints no pool
+    line; the assertions therefore pin the requested count and the block
+    partition (both memory-state independent) and leave the effective count
+    loose."""
     pars = FocuserParameters(
         frame_start=FRAME_START,
         frame_end=FRAME_END,
@@ -345,14 +350,33 @@ def test_focus_process_count_invariance(
     capsys.readouterr()  # discard the serial run's debug output
 
     out_two_processes = focus_with(2)
-    n_blocks_match = re.search(
-        r"Focusing (\d+) block\(s\) on 2 worker processes",
-        capsys.readouterr().out,
-    )
-    assert n_blocks_match is not None, "no worker-pool line in the debug output"
+    parallel_output = capsys.readouterr().out
+
+    # Partition evidence: N BLOCKS prints in the debug output before the
+    # memory-based worker cap is applied, because the block size is derived
+    # per requested process; the count is therefore independent of the
+    # machine's memory state (a lower cap only changes how many workers queue
+    # the same blocks).
+    n_blocks_match = re.search(r"N BLOCKS = (\d+)", parallel_output)
+    assert n_blocks_match is not None, "no N BLOCKS line in the debug output"
     assert int(n_blocks_match.group(1)) >= 2, (
         "n_processes=2 did not split the range into multiple blocks"
     )
+
+    # The worker-pool line prints only while the effective worker count is
+    # above 1; the memory-based budget may cap the pool to the serial branch,
+    # which prints no pool line. When the line prints, pin the
+    # load-independent requested count and the block count, and leave the
+    # memory-capped effective worker count loose: it may be anything between
+    # 2 and the request depending on MemAvailable.
+    pool_line_match = re.search(
+        r"Focusing (\d+) block\(s\) on (\d+) worker processes"
+        r" \(requested: 2\)\.",
+        parallel_output,
+    )
+    if pool_line_match is not None:
+        assert int(pool_line_match.group(1)) == int(n_blocks_match.group(1))
+        assert int(pool_line_match.group(2)) >= 1
 
     assert out_two_processes.tobytes() == out_one_process.tobytes()
 
@@ -468,7 +492,12 @@ def test_sfrssim_process_count_invariance(
     reach the DEM and the per-track arrays through fork copy-on-write and run
     the same per-frame operation sequence, and the outputs are assembled in
     frame order, so not a single byte may differ. This is the end-to-end pin
-    of the simulator n_processes reactivation for the sfRSsim engine."""
+    of the simulator n_processes reactivation for the sfRSsim engine. The
+    pool is memory-capped: the effective worker count printed on the pool
+    line may clamp below the request, down to the serial branch, which
+    prints no pool line; the assertions therefore pin the requested count
+    and the frame-range partition (both memory-state independent) and leave
+    the effective count loose."""
     orbit_data = simulation_inputs.orbit_data
     dem = simulation_inputs.dem
 
@@ -476,14 +505,32 @@ def test_sfrssim_process_count_invariance(
     capsys.readouterr()  # discard the serial run's progress output
 
     parallel_result = _simulate_with_engine(sfRSsim, 2, orbit_data, dem)
-    pool_line_match = re.search(
-        r"Simulating (\d+) frame range\(s\) on 2 worker processes",
-        capsys.readouterr().out,
-    )
-    assert pool_line_match is not None, "no worker-pool line in the output"
-    assert int(pool_line_match.group(1)) >= 2, (
+    parallel_output = capsys.readouterr().out
+
+    # Partition evidence: the per-range progress lines print in both the pool
+    # branch and the serial-fallback branch, and the frame-range count is
+    # derived from the requested n_processes before the memory-based worker
+    # cap is applied, so it is independent of the machine's memory state.
+    n_ranges_match = re.search(r"PROCESSED RANGE 0 \(1/(\d+)\):", parallel_output)
+    assert n_ranges_match is not None, "no PROCESSED RANGE progress line in the output"
+    assert int(n_ranges_match.group(1)) >= 2, (
         "n_processes=2 did not split the range into multiple frame ranges"
     )
+
+    # The worker-pool line prints only while the effective worker count is
+    # above 1; the memory-based budget may cap the pool to the serial branch,
+    # which prints no pool line. When the line prints, pin the
+    # load-independent requested count and the frame-range count, and leave
+    # the memory-capped effective worker count loose: it may be anything
+    # between 2 and the request depending on MemAvailable.
+    pool_line_match = re.search(
+        r"Simulating (\d+) frame range\(s\) on (\d+) worker processes"
+        r" \(requested: 2\)\.",
+        parallel_output,
+    )
+    if pool_line_match is not None:
+        assert int(pool_line_match.group(1)) == int(n_ranges_match.group(1))
+        assert int(pool_line_match.group(2)) >= 1
 
     _assert_simulation_results_byte_equal(serial_result, parallel_result, "sfRSsim")
 
@@ -495,7 +542,12 @@ def test_drssim_process_count_invariance(
     of the phase-6 P6 reactivation) produces byte-identical products to the
     serial n_processes=1 path on the same real-data range, for the dRSsim
     engine (constructed with simulate_chirp=False, mirroring the fidelity
-    matrix's run script, which loads no instrument object)."""
+    matrix's run script, which loads no instrument object). The pool is
+    memory-capped: the effective worker count printed on the pool line may
+    clamp below the request, down to the serial branch, which prints no pool
+    line; the assertions therefore pin the requested count and the
+    frame-range partition (both memory-state independent) and leave the
+    effective count loose."""
     orbit_data = simulation_inputs.orbit_data
     dem = simulation_inputs.dem
 
@@ -503,14 +555,32 @@ def test_drssim_process_count_invariance(
     capsys.readouterr()  # discard the serial run's progress output
 
     parallel_result = _simulate_with_engine(dRSsim, 2, orbit_data, dem)
-    pool_line_match = re.search(
-        r"Simulating (\d+) frame range\(s\) on 2 worker processes",
-        capsys.readouterr().out,
-    )
-    assert pool_line_match is not None, "no worker-pool line in the output"
-    assert int(pool_line_match.group(1)) >= 2, (
+    parallel_output = capsys.readouterr().out
+
+    # Partition evidence: the per-range progress lines print in both the pool
+    # branch and the serial-fallback branch, and the frame-range count is
+    # derived from the requested n_processes before the memory-based worker
+    # cap is applied, so it is independent of the machine's memory state.
+    n_ranges_match = re.search(r"PROCESSED RANGE 0 \(1/(\d+)\):", parallel_output)
+    assert n_ranges_match is not None, "no PROCESSED RANGE progress line in the output"
+    assert int(n_ranges_match.group(1)) >= 2, (
         "n_processes=2 did not split the range into multiple frame ranges"
     )
+
+    # The worker-pool line prints only while the effective worker count is
+    # above 1; the memory-based budget may cap the pool to the serial branch,
+    # which prints no pool line. When the line prints, pin the
+    # load-independent requested count and the frame-range count, and leave
+    # the memory-capped effective worker count loose: it may be anything
+    # between 2 and the request depending on MemAvailable.
+    pool_line_match = re.search(
+        r"Simulating (\d+) frame range\(s\) on (\d+) worker processes"
+        r" \(requested: 2\)\.",
+        parallel_output,
+    )
+    if pool_line_match is not None:
+        assert int(pool_line_match.group(1)) == int(n_ranges_match.group(1))
+        assert int(pool_line_match.group(2)) >= 1
 
     _assert_simulation_results_byte_equal(serial_result, parallel_result, "dRSsim")
 
