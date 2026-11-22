@@ -24,9 +24,9 @@
 """Unit tests of the processing parameter containers
 (sopa.processing.parameters): defaults, the frame_start clamp against the
 synthetic-aperture half length, the meters-skip priority over the frame skip,
-the focuser-specific additions, and the coherence-time aperture specification
-(the seconds-to-frames conversion helper and the mutually exclusive focuser
-aperture modes).
+the non-positive skip validation, the focuser-specific additions, and the
+coherence-time aperture specification (the seconds-to-frames conversion
+helper and the mutually exclusive focuser aperture modes).
 """
 
 import pytest
@@ -45,7 +45,7 @@ def test_simulator_parameters_defaults() -> None:
     assert p.frame_start == 768
     assert p.frame_end == -1
     assert p.frame_skip == 1
-    assert p.meters_skip == 0
+    assert p.meters_skip is None
     assert p.frame_half_aperture == 768
     assert p.squint_angle == 0
     assert p.range_weighting_function == "hanning"
@@ -73,15 +73,49 @@ def test_meters_skip_takes_priority() -> None:
 
 
 def test_frame_skip_without_meters() -> None:
-    """Checks the frame-based selection: meters_skip stays zero."""
+    """Checks the frame-based selection: meters_skip stays None."""
     p = SimulatorParameters(frame_skip=4)
     assert p.frame_skip == 4
-    assert p.meters_skip == 0
+    assert p.meters_skip is None
+
+
+def test_rejects_non_positive_meters_skip() -> None:
+    """Checks that a non-positive meters_skip refuses at construction for
+    both parameter containers: the former zero sentinel cannot be used to
+    switch the skip mode anymore, and a negative ground distance has no
+    meaning."""
+    with pytest.raises(ValueError, match="ERROR: meters_skip must be positive"):
+        SimulatorParameters(meters_skip=0)
+    with pytest.raises(ValueError, match="ERROR: meters_skip must be positive"):
+        SimulatorParameters(meters_skip=-2500.0)
+    with pytest.raises(ValueError, match="ERROR: meters_skip must be positive"):
+        FocuserParameters(meters_skip=0.0)
+
+
+def test_rejects_non_positive_frame_skip() -> None:
+    """Checks that a non-positive frame_skip refuses at construction when
+    meters_skip is not given, for both parameter containers: a zero or
+    negative arange step selects no frame and used to crash the consumers
+    on the empty selection."""
+    with pytest.raises(
+        ValueError, match="ERROR: frame_skip must be positive when meters_skip"
+    ):
+        SimulatorParameters(frame_skip=0)
+    with pytest.raises(
+        ValueError, match="ERROR: frame_skip must be positive when meters_skip"
+    ):
+        SimulatorParameters(frame_skip=-5)
+    with pytest.raises(
+        ValueError, match="ERROR: frame_skip must be positive when meters_skip"
+    ):
+        FocuserParameters(frame_skip=0)
 
 
 def test_focuser_parameters_defaults() -> None:
     """Checks the focuser parameter defaults beyond the shared base ones."""
     p = FocuserParameters()
+    assert p.frame_skip == 1
+    assert p.meters_skip is None
     assert p.multilooking_doppler_bandwidth == 0.8
     assert p.correct_range_migration is True
     assert p.compensate_doppler_phase is True

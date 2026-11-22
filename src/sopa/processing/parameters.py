@@ -71,7 +71,7 @@ def half_aperture_frames_from_coherence_time(
 
 
 class _BaseProcessingParameters:
-    """Common frame-range, aperture and range-weighting parameters. `frame_start` is clamped to `frame_half_aperture`; when `meters_skip` is given it takes priority over `frame_skip` (frame selection by equal ground distance instead of a fixed frame count)."""
+    """Common frame-range, aperture and range-weighting parameters. `frame_start` is clamped to `frame_half_aperture`; when `meters_skip` is given it takes priority over `frame_skip` (frame selection by equal ground distance instead of a fixed frame count) and is stored with `frame_skip` zeroed, otherwise `frame_skip` is stored with `meters_skip` left None; a non-positive meters_skip raises ValueError, as does a non-positive frame_skip when meters_skip is not given."""
 
     def __init__(
         self,
@@ -93,11 +93,17 @@ class _BaseProcessingParameters:
         self.frame_start = max([frame_start, frame_half_aperture])
         self.frame_end = frame_end
         if meters_skip is not None:
+            if meters_skip <= 0:
+                raise ValueError("ERROR: meters_skip must be positive.")
             self.meters_skip = meters_skip
             self.frame_skip = 0
         else:
+            if frame_skip <= 0:
+                raise ValueError(
+                    "ERROR: frame_skip must be positive when meters_skip is not given."
+                )
             self.frame_skip = frame_skip
-            self.meters_skip = 0
+            self.meters_skip = None
 
         self.frame_half_aperture = frame_half_aperture
         self.squint_angle = squint_angle

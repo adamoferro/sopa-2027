@@ -357,3 +357,61 @@ def test_get_frame_ids_from_skip_distance(cc: MARS_IAU2000) -> None:
     assert np.all(np.diff(ids) > 0)
     assert len(ids) >= 2
     assert 1 <= min_n_frames <= max_n_frames
+
+
+def test_get_frame_ids_rejects_non_positive_skip_distance(
+    cc: MARS_IAU2000,
+) -> None:
+    """Checks the entry validation: a zero or negative skip distance refuses
+    with the house-style ValueError before any computation. A zero skip used
+    to push the required-distance arange past numpy's maximum array size,
+    and a negative one selected an empty required-distance array whose
+    statistics reduction raised."""
+    lat = np.zeros(4)
+    lon = np.linspace(0.0, 0.15, 4)
+    with pytest.raises(ValueError, match="ERROR: skip distance must be positive"):
+        cc.get_frame_ids_from_skip_distance(lat, lon, 0.0)
+    with pytest.raises(ValueError, match="ERROR: skip distance must be positive"):
+        cc.get_frame_ids_from_skip_distance(lat, lon, -5.0)
+
+
+def test_get_frame_ids_single_point_window_returns_empty(
+    cc: MARS_IAU2000,
+) -> None:
+    """Checks the degenerate window with fewer than two track points: no
+    per-step distance exists, so the helper returns an empty id array with
+    zero interval statistics instead of reducing an empty array."""
+    ids, min_n_frames, max_n_frames = cc.get_frame_ids_from_skip_distance(
+        np.array([0.0]), np.array([10.0]), 1000.0
+    )
+    np.testing.assert_array_equal(ids, np.array([], dtype=np.int64))
+    assert min_n_frames == 0.0 and max_n_frames == 0.0
+
+
+def test_get_frame_ids_zero_length_track_returns_empty(
+    cc: MARS_IAU2000,
+) -> None:
+    """Checks a window whose track points coincide (zero total track
+    length): no required distance fits below the zero total, so the tree
+    query returns nothing and the helper hands back an empty id array with
+    zero interval statistics."""
+    ids, min_n_frames, max_n_frames = cc.get_frame_ids_from_skip_distance(
+        np.zeros(4), np.full(4, 10.0), 1000.0
+    )
+    np.testing.assert_array_equal(ids, np.array([], dtype=np.int64))
+    assert min_n_frames == 0.0 and max_n_frames == 0.0
+
+
+def test_get_frame_ids_single_frame_selection_reports_floor_statistics(
+    cc: MARS_IAU2000,
+) -> None:
+    """Checks the valid single-frame selection (a skip larger than the
+    window's total ground distance): one frame id and interval statistics of
+    1.0 instead of a reduction over the empty interval differences — the
+    value the SOFA block-partition heuristic's floor of 1 makes unobservable
+    in the products."""
+    ids, min_n_frames, max_n_frames = cc.get_frame_ids_from_skip_distance(
+        np.array([0.0, 1.0]), np.array([0.0, 0.0]), 1.0e6
+    )
+    np.testing.assert_array_equal(ids, np.array([0]))
+    assert min_n_frames == 1.0 and max_n_frames == 1.0

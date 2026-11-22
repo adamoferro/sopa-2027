@@ -138,17 +138,29 @@ class CoordinateConverter:
         lon: npt.NDArray[np.float64],
         skip_distance: float,
     ) -> tuple[npt.NDArray[np.int64], float, float]:
-        """
-        Find the frame ids of frames approximately equally separated by
+        """Find the frame ids of frames approximately equally separated by
         skip_distance meters. The distance is calculated as the euclidean
         distance between points on the ellipsoid, assuming that the points
-        are sufficiently close to avoid arc calculations.
+        are sufficiently close to avoid arc calculations. Raises ValueError
+        when skip_distance is not strictly positive. Returns empty frame ids
+        with zero interval statistics for degenerate selections: a window
+        with fewer than two track points has no per-step distances, and a
+        window whose total track length is zero offers no required
+        distances. A single-frame selection has no interval differences; its
+        interval statistics are reported as 1.0, the value the only
+        consumer's floor of 1 (the SOFA block-partition heuristic, which
+        divides by the minimum) makes unobservable in the products.
         """
+
+        if skip_distance <= 0:
+            raise ValueError("ERROR: skip distance must be positive.")
 
         x, y, z = self.get_ellipsoid_xyz_from_latlon(lat, lon)
         distances = self.euclidean_distance_cart(
             x[1:], y[1:], z[1:], x[:-1], y[:-1], z[:-1]
         )
+        if distances.size == 0:
+            return np.array([], dtype=np.int64), 0.0, 0.0
         distance_min = np.min(distances)
         distances = np.insert(distances, 0, 0)
         distances_cum = np.cumsum(distances)
@@ -163,11 +175,19 @@ class CoordinateConverter:
 
         t = cKDTree(distances_cum)
         d, i = t.query(required_distances)
+        if i.size == 0:
+            return np.array([], dtype=np.int64), 0.0, 0.0
 
         # estimate max number of frames per interval
         diffs = np.diff(distances_cum[i], axis=0)
-        min_n_frames_per_interval = np.ceil(np.min(diffs) / distance_min)
-        max_n_frames_per_interval = np.ceil(np.max(diffs) / distance_min)
+        if diffs.size == 0:
+            # single-frame selection: no interval differences; report the
+            # consumers' floor value of 1 instead of reducing an empty array
+            min_n_frames_per_interval = 1.0
+            max_n_frames_per_interval = 1.0
+        else:
+            min_n_frames_per_interval = np.ceil(np.min(diffs) / distance_min)
+            max_n_frames_per_interval = np.ceil(np.max(diffs) / distance_min)
 
         return i, min_n_frames_per_interval, max_n_frames_per_interval
 

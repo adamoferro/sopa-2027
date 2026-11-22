@@ -219,7 +219,7 @@ class SOFA:
 
         self._frames_to_be_focused_start = param_obj.frame_start
         self._frames_to_be_focused_end = param_obj.frame_end
-        if param_obj.frame_skip == 0:
+        if param_obj.meters_skip is not None:
             self._skip_meters = param_obj.meters_skip
             self._skip_frames = 0
         else:

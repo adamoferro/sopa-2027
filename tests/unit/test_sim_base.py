@@ -24,7 +24,8 @@
 """Unit tests of the simulator base class (sopa.processing.simulators.sim_base),
 exercised through a minimal concrete subclass with a trivial per-frame
 callback: constructor validation and normalization, frame selection by frame
-skip and by meters skip, the output-image sizing (set and unset receive-window
+skip and by meters skip, the empty-selection refusal contract (the ADR 0040
+mirror for the simulators), the output-image sizing (set and unset receive-window
 times), the chirp convolution, the subprocess frame-range split, the
 n_processes clamping of the phase-6 parallel reactivation, the
 parallel-dispatch machinery (result assembly and the single-worker frame-range
@@ -32,6 +33,7 @@ partition invariance), and the sample-position cast contract of the shared
 `_sample_positions_to_int` helper.
 """
 
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -64,6 +66,17 @@ class _ConstDEM:
     ) -> npt.NDArray[np.float64]:
         """Returns the constant DEM radius for all points."""
         return np.full(np.shape(lat), self.radius, dtype="float64")
+
+
+class _EmptySelectionGeom:
+    """Stand-in geometry helper handing back an empty frame selection, as
+    the real MARS_IAU2000 helper can for degenerate windows."""
+
+    def get_frame_ids_from_skip_distance(
+        self, lat: npt.ArrayLike, lon: npt.ArrayLike, skip_distance: float
+    ) -> tuple[npt.NDArray[np.int64], float, float]:
+        """Returns an empty selection with zero interval statistics."""
+        return np.array([], dtype=np.int64), 0.0, 0.0
 
 
 class _RecordingCallback:
@@ -300,6 +313,87 @@ def test_frame_selection_by_meters_skip() -> None:
     n_simulated = result[0].shape[1]
     assert 2 <= n_simulated < N_FRAMES - 2
     assert callback.calls[0]["n_frames"] == n_simulated
+
+
+def test_empty_selection_frames_equal_pair_refused(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Checks the ADR 0040 mirror refusal for the simulators: a frames-mode
+    selection that comes out empty stops the simulation with the
+    print-and-None refusal instead of crashing at the first consumption.
+    Frame_end equal to the clamped frame start passes the range refusal as
+    equality, and the arange over start..end selects no frame."""
+    callback = _RecordingCallback()
+    sim = _TrivialSim(
+        MARS_IAU2000(),
+        _ConstDEM(),
+        SimulatorParameters(frame_start=0, frame_end=10, frame_half_aperture=10),
+        callback,
+    )
+    assert sim.simulate(_orbit_data()) is None
+    assert "ERROR: no frame to be simulated" in capsys.readouterr().out
+    assert callback.calls == []
+
+
+def test_empty_selection_negative_skip_refused(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Checks the same refusal for a negative frame_skip: a negative step
+    over a start-below-stop range yields an empty arange (direction
+    mismatch), which used to crash on the first consumption. The parameters
+    container refuses a non-positive frame_skip at construction, so the test
+    hands the simulator an ad-hoc parameter object to pin the simulator's
+    own refusal line."""
+    callback = _RecordingCallback()
+    pars = SimpleNamespace(
+        frame_start=2,
+        frame_end=10,
+        frame_skip=-5,
+        meters_skip=None,
+        frame_half_aperture=2,
+    )
+    sim = _TrivialSim(MARS_IAU2000(), _ConstDEM(), pars, callback)
+    assert sim.simulate(_orbit_data()) is None
+    assert "ERROR: no frame to be simulated" in capsys.readouterr().out
+    assert callback.calls == []
+
+
+def test_empty_selection_meters_skip_refused(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Checks the same refusal in meters mode: the geometry helper is
+    stubbed to hand back no frame id (as the real one now can for degenerate
+    windows), pinning the refusal contract the simulator must uphold."""
+    callback = _RecordingCallback()
+    pars = SimulatorParameters(
+        frame_start=2,
+        frame_end=N_FRAMES - 1,
+        frame_half_aperture=2,
+        meters_skip=6000.0,
+    )
+    sim = _TrivialSim(_EmptySelectionGeom(), _ConstDEM(), pars, callback)
+    assert sim.simulate(_orbit_data()) is None
+    assert "ERROR: no frame to be simulated" in capsys.readouterr().out
+    assert callback.calls == []
+
+
+def test_frames_selection_above_empty_boundary_still_simulates(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Checks the over-refusal guard: a frames-mode selection directly above
+    the empty boundary (arange(2, 4) = two frames) still simulates and
+    prints no error."""
+    callback = _RecordingCallback()
+    sim = _TrivialSim(
+        MARS_IAU2000(),
+        _ConstDEM(),
+        SimulatorParameters(frame_start=2, frame_end=4, frame_half_aperture=2),
+        callback,
+    )
+    result = sim.simulate(_orbit_data())
+    assert result is not None
+    assert result[0].shape == (667 * 2, 2)
+    assert "ERROR" not in capsys.readouterr().out
 
 
 def test_chirp_convolution() -> None:

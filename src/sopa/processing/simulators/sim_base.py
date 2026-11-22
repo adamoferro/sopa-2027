@@ -233,7 +233,7 @@ class _SIMBase:
 
         self._frames_to_be_simulated_start = param_obj.frame_start
         self._frames_to_be_simulated_end = param_obj.frame_end
-        if param_obj.frame_skip == 0:
+        if param_obj.meters_skip is not None:
             self._skip_meters = param_obj.meters_skip
             self._skip_frames = 0
         else:
@@ -267,7 +267,7 @@ class _SIMBase:
         ]
         | None
     ):
-        """Validates the frame range, selects the frames to simulate, prepares the aligned track vectors and receive-window reference, and allocates the output images; returns None on invalid ranges."""
+        """Validates the frame range, selects the frames to simulate, prepares the aligned track vectors and receive-window reference, and allocates the output images; returns None on invalid ranges and when the computed frame selection is empty."""
         n_input_frames = orbit_data["X"].shape[0]
 
         if self._frames_to_be_simulated_end >= n_input_frames:
@@ -319,6 +319,10 @@ class _SIMBase:
                 )
             )
             frames_to_be_simulated += self._frames_to_be_simulated_start
+
+        if len(frames_to_be_simulated) == 0:
+            print("ERROR: no frame to be simulated in the selected range.")
+            return None
 
         # correction of the last frame to be simulated
         self._frames_to_be_simulated_end = frames_to_be_simulated[-1]

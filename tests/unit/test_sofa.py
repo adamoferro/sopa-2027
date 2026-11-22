@@ -435,10 +435,10 @@ def test_focus_rejects_empty_selection_meters_skip(
 ) -> None:
     """Checks that a meters-mode selection that comes out empty stops the
     focus with the refusal instead of crashing. The real geometry helper
-    cannot return an empty selection today (a degenerate window fails
-    inside the helper with a ValueError on the interval statistics), so the
-    test stubs the helper to pin the refusal contract focus() must uphold
-    when the helper hands back no frame id."""
+    returns an empty selection only for degenerate windows (fewer than two
+    track points, or a track of zero total length); the test stubs the
+    helper to pin the refusal contract focus() must uphold when the helper
+    hands back no frame id."""
     geom = SimpleNamespace(
         get_frame_ids_from_skip_distance=lambda lat, lon, skip: (
             np.array([], dtype="int64"),
