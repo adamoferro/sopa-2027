@@ -80,7 +80,7 @@ class MOLA(DEMBase):
         )
 
     def read(self) -> bool:
-        """Loads the DEM image with the ENVI reader, unless an image was already provided to the constructor or loaded before."""
+        """Loads the DEM image with the ENVI reader, unless an image was already provided to the constructor or loaded before; returns False when the reader fails (it reports the error and returns None instead of an image)."""
         if self.dem is not None:
             print(
                 "WARNING: dem has been already loaded or set by init. Not loading again."
@@ -88,8 +88,11 @@ class MOLA(DEMBase):
         elif self.filename_base != "":
             try:
                 self.dem = envi.read(self.filename_base)
-                self._set_info()
-                return True
+                if self.dem is None:
+                    print("ERROR: cannot read MOLA128 DEM file.")
+                else:
+                    self._set_info()
+                    return True
             except OSError:
                 print("ERROR: cannot read MOLA128 DEM file.")
         else:
@@ -174,23 +177,29 @@ class MOLA(DEMBase):
         lat: float | npt.NDArray[np.float64],
         long: float | npt.NDArray[np.float64],
         return_as_float: bool = False,
-    ) -> tuple[
-        npt.NDArray[np.float64] | npt.NDArray[np.int64],
-        npt.NDArray[np.float64] | npt.NDArray[np.int64],
-    ]:
-        """Converts lat/lon (degrees) to DEM pixel coordinates, by default rounded to integer pixel indices; out-of-range points are flagged in the internal mask and clamped to the upper-left pixel (to be replaced by the dummy value by the callers)."""
+    ) -> (
+        tuple[float, float]
+        | tuple[
+            npt.NDArray[np.float64] | npt.NDArray[np.int64],
+            npt.NDArray[np.float64] | npt.NDArray[np.int64],
+        ]
+    ):
+        """Converts lat/lon (degrees) to DEM pixel coordinates, by default rounded to integer pixel indices, with `return_as_float` scalar inputs returned as scalar floats and array inputs as a float array. Out-of-range points — a longitude exactly on the right edge included — are flagged in the internal mask and clamped to the upper-left pixel (to be replaced by the dummy value by the callers); non-finite coordinates take the same masked path without reaching the integer cast."""
         mola_x = (long - self._MOLA_MIN_LONG) / self.deg_sampling
         mola_y = (self._MOLA_MAX_LAT - lat) / self.deg_sampling
 
+        scalar_input = np.ndim(mola_x) == 0
         if not return_as_float:
-            mola_x = np.round(mola_x).astype("int")
-            mola_y = np.round(mola_y).astype("int")
+            # non-finite coordinates must never reach the int cast: casting a
+            # non-finite float is platform-dependent (ADR 0037, INT64_MIN on
+            # x86-64 vs 0 on aarch64), so they are masked to the
+            # out-of-coverage sentinel on the float array first
+            mola_x = np.round(np.where(np.isfinite(mola_x), mola_x, -1.0)).astype("int")
+            mola_y = np.round(np.where(np.isfinite(mola_y), mola_y, -1.0)).astype("int")
 
-        if len(mola_x.shape) == 0:
+        if scalar_input:
             mola_x = np.array([mola_x])
             mola_y = np.array([mola_y])
-
-        mola_x[mola_x == self.dem_shape[1]] = 0
 
         self._mask = (
             (mola_x < 0)
@@ -204,6 +213,8 @@ class MOLA(DEMBase):
         mola_x[mola_x >= self.dem_shape[1]] = 0
         mola_y[mola_y >= self.dem_shape[0]] = 0
 
+        if scalar_input and return_as_float:
+            return (float(mola_x[0]), float(mola_y[0]))
         return (mola_x, mola_y)
 
     def to_LL_from_XY(self, x: float, y: float) -> tuple[float, float]:
@@ -309,15 +320,20 @@ class _MOLAScaledSubdemSampler:
     def get_dem_radius_from_lat_lon(
         self, lat: float | npt.NDArray[np.float64], lon: float | npt.NDArray[np.float64]
     ) -> npt.NDArray[np.int32]:
-        """Returns the sub-DEM radius (in m, MOLA offset included) at the requested lat/lon points on the scaled grid; points outside the scaled sub-DEM coverage receive the dummy value."""
-        mola_x = np.round((lon - self._MOLA_MIN_LONG) / self.deg_sampling).astype("int")
-        mola_y = np.round((self._MOLA_MAX_LAT - lat) / self.deg_sampling).astype("int")
+        """Returns the sub-DEM radius (in m, MOLA offset included) at the requested lat/lon points on the scaled grid; points outside the scaled sub-DEM coverage — non-finite coordinates included — receive the dummy value."""
+        mola_x = (lon - self._MOLA_MIN_LONG) / self.deg_sampling
+        mola_y = (self._MOLA_MAX_LAT - lat) / self.deg_sampling
+
+        # non-finite coordinates must never reach the int cast: casting a
+        # non-finite float is platform-dependent (ADR 0037, INT64_MIN on
+        # x86-64 vs 0 on aarch64), so they are masked to the
+        # out-of-coverage sentinel on the float array first
+        mola_x = np.round(np.where(np.isfinite(mola_x), mola_x, -1.0)).astype("int")
+        mola_y = np.round(np.where(np.isfinite(mola_y), mola_y, -1.0)).astype("int")
 
         if len(mola_x.shape) == 0:
             mola_x = np.array([mola_x])
             mola_y = np.array([mola_y])
-
-        mola_x[mola_x == self.dem_shape[1]] = 0
 
         self._mask = (
             (mola_x < 0)

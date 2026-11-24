@@ -30,6 +30,7 @@ radius lookups with the dummy-value mask, sub-image extraction with the MOLA
 offset, the smoothed/upscaled sub-DEM extraction, and the read/reset states.
 """
 
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -134,14 +135,17 @@ def test_read_without_filename(capsys: pytest.CaptureFixture[str]) -> None:
     assert "ERROR" in capsys.readouterr().out
 
 
-def test_read_missing_file_raises(dem_file: tuple[Path, npt.NDArray[np.int16]]) -> None:
-    """Checks the current behavior on a missing DEM file: envi.read returns
-    None and the subsequent _set_info raises AttributeError (documented as-is;
-    flagged for the technical-debt page)."""
+def test_read_missing_file_reports_error(
+    dem_file: tuple[Path, npt.NDArray[np.int16]], capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Checks the missing-file contract of read(): the ENVI reader reports
+    the error itself and returns None, the reader's error message is printed
+    and False is returned instead of failing on the None image."""
     base, _ = dem_file
     m = MOLA128(filename_base=str(base) + "_missing")
-    with pytest.raises(AttributeError):
-        m.read()
+    assert m.read() is False
+    assert m.dem is None
+    assert "ERROR" in capsys.readouterr().out
 
 
 def test_constructor_image_is_copied() -> None:
@@ -173,30 +177,91 @@ def test_to_xy_from_ll_as_float(dem: tuple[MOLA128, npt.NDArray[np.int16]]) -> N
     assert x[0] == pytest.approx(64.0) and y[0] == pytest.approx(64.0)
 
 
-def test_to_xy_from_ll_as_float_scalar_crashes(
+def test_to_xy_from_ll_as_float_scalar(
     dem: tuple[MOLA128, npt.NDArray[np.int16]],
 ) -> None:
-    """Documents the current behavior of the float variant with scalar float
-    inputs: the conversion produces plain Python floats, so the internal
-    shape check fails with AttributeError (inherited behavior; flagged for
-    the technical-debt page)."""
+    """Checks the float variant with scalar float inputs: scalar floats in,
+    scalar floats out (the scalar continuation of the array path), with the
+    internal mask set for the single point."""
     m, _ = dem
-    with pytest.raises(AttributeError):
-        m.to_XY_from_LL(87.5, 0.5, return_as_float=True)
+    x, y = m.to_XY_from_LL(87.5, 0.5, return_as_float=True)
+    assert isinstance(x, float) and isinstance(y, float)
+    assert x == pytest.approx(64.0) and y == pytest.approx(64.0)
+    assert np.array_equal(m._mask, np.array([False]))
 
 
 def test_to_xy_clamps_and_masks_out_of_range(
     dem: tuple[MOLA128, npt.NDArray[np.int16]],
 ) -> None:
     """Checks that out-of-coverage points are masked and clamped to the
-    upper-left pixel. The longitude at the right edge (x == n_cols) is wrapped
-    to column 0 before the mask is computed, so it is NOT masked and silently
-    reads column 0 (documented as-is; flagged for the technical-debt page)."""
+    upper-left pixel, a longitude exactly on the right edge (x == n_cols)
+    included: it is flagged out-of-range like any beyond-edge value instead
+    of being wrapped to column 0."""
     m, _ = dem
     x, y = m.to_XY_from_LL(np.array([100.0, 80.0, 88.0]), np.array([0.5, 0.5, 1.0]))
     assert np.array_equal(x, np.array([64, 64, 0]))
     assert np.array_equal(y, np.array([0, 0, 0]))
-    assert np.array_equal(m._mask, np.array([True, True, False]))
+    assert np.array_equal(m._mask, np.array([True, True, True]))
+
+
+def test_to_xy_masks_right_edge_longitude(
+    dem: tuple[MOLA128, npt.NDArray[np.int16]],
+) -> None:
+    """Checks the right-edge mask on the coordinate level: the last in-range
+    column (x == n_cols - 1) stays unmasked, while a longitude mapping to
+    x == n_cols and one beyond it are both masked and clamped to the
+    upper-left pixel."""
+    m, _ = dem
+    lats = np.array([88.0, 88.0, 88.0])
+    lons = np.array([127.0 / 128.0, 1.0, 1.0 + 1e-6])
+    x, y = m.to_XY_from_LL(lats, lons)
+    assert np.array_equal(x, np.array([127, 0, 0]))
+    assert np.array_equal(y, np.array([0, 0, 0]))
+    assert np.array_equal(m._mask, np.array([False, True, True]))
+
+
+def test_radius_lookup_right_edge_receives_dummy() -> None:
+    """Checks that a longitude exactly on the right edge receives the dummy
+    value: x == n_cols is flagged out-of-range, so the lookup no longer
+    silently reads column 0."""
+    values = np.ones((8, 8), dtype="int16")
+    m = MOLA128(image=values, dummy_value=77)
+    radii = m.get_dem_radius_from_lat_lon(88.0, 8.0 / 128.0)
+    assert radii is not None
+    assert radii[0] == 77
+
+
+def test_to_xy_int_variant_masks_non_finite(
+    dem: tuple[MOLA128, npt.NDArray[np.int16]],
+) -> None:
+    """Checks the cast contract of the integer variant for non-finite
+    coordinates (NaN, +inf, -inf): all of them are mapped to the
+    out-of-coverage sentinel on the float array before the int cast and
+    flagged out-of-range (ADR 0037). Casting a non-finite float to int is
+    platform-dependent (INT64_MIN on x86-64, 0 on aarch64), so no non-finite
+    value may reach the cast: the conversion must not warn."""
+    m, _ = dem
+    coords = np.array([np.nan, np.inf, -np.inf])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        x, y = m.to_XY_from_LL(coords, coords)
+    assert np.array_equal(x, np.array([0, 0, 0]))
+    assert np.array_equal(y, np.array([0, 0, 0]))
+    assert np.array_equal(m._mask, np.array([True, True, True]))
+
+
+def test_radius_lookup_non_finite_receives_dummy() -> None:
+    """Checks that a non-finite latitude receives the dummy value: the
+    coordinate is masked to the out-of-coverage sentinel before the int cast
+    (no cast warning on any platform, ADR 0037) and the point is treated as
+    out of coverage."""
+    values = np.ones((8, 8), dtype="int16")
+    m = MOLA128(image=values, dummy_value=77)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        radii = m.get_dem_radius_from_lat_lon(np.nan, 0.03)
+    assert radii is not None
+    assert radii[0] == 77
 
 
 def test_to_ll_from_xy(dem: tuple[MOLA128, npt.NDArray[np.int16]]) -> None:
@@ -320,9 +385,9 @@ def test_scaled_subdem_full_lattice_bitwise_equal_to_zoom(
     assert np.array_equal(radii, ref_radii)
 
     # boundary semantics carried over from to_XY_from_LL: a longitude mapping
-    # to mola_x == n_long wraps to column 0 without being masked (documented
-    # as-is), while a latitude beyond the southern limit is masked and
-    # receives the dummy value
+    # to mola_x == n_long is masked out-of-range like any beyond-edge value
+    # (it used to be wrapped to column 0 and read silently), and a latitude
+    # beyond the southern limit is masked; both receive the dummy value
     q = n_lat // 2
     lat_probe = np.array([float(lat_lattice[q, 0]), 86.0])
     lon_probe = np.array(
@@ -330,8 +395,25 @@ def test_scaled_subdem_full_lattice_bitwise_equal_to_zoom(
     )
     radii_edge = sub.get_dem_radius_from_lat_lon(lat_probe, lon_probe)
     assert radii_edge is not None
-    assert radii_edge[0] == ref_radii[q, 0]
+    assert radii_edge[0] == sub.dummy_value
     assert radii_edge[1] == sub.dummy_value
+
+
+def test_scaled_subdem_non_finite_coordinates_receive_dummy(
+    dem: tuple[MOLA128, npt.NDArray[np.int16]],
+) -> None:
+    """Checks the sampler cast contract for non-finite coordinates: a NaN
+    latitude is mapped to the out-of-coverage sentinel before the int cast
+    (no cast warning on any platform, ADR 0037) and receives the dummy value
+    like any masked point."""
+    m, _ = dem
+    sub = m.get_scaled_subdem_from_latlon_limits(86.75, 86.5, 0.5, 0.0, scale_factor=4)
+    assert sub is not None
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        radii = sub.get_dem_radius_from_lat_lon(np.nan, 0.25)
+    assert radii is not None
+    assert radii[0] == sub.dummy_value
 
 
 def test_str(dem: tuple[MOLA128, npt.NDArray[np.int16]]) -> None:
