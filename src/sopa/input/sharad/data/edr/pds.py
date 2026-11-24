@@ -225,11 +225,11 @@ class EDR(RSData):
         service function that returns a tuple containing the
         main parameters of the acquisition mode
         """
-        id = self._IMS.index(im)
+        mode_index = self._IMS.index(im)
         return (
-            self._IM_PRESUMMING[id],
-            self._IM_N_BITS_PER_BYTE[id],
-            self._IM_N_BYTES_PER_RECORD[id],
+            self._IM_PRESUMMING[mode_index],
+            self._IM_N_BITS_PER_BYTE[mode_index],
+            self._IM_N_BYTES_PER_RECORD[mode_index],
         )
 
     def _load_ancillary_data(self, only_header: bool = False) -> bool | None:

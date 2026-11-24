@@ -97,6 +97,7 @@ class RSData:
 
     @data.setter
     def data(self, value: npt.NDArray) -> None:
+        """Assignment is refused: it prints an error and leaves the stored echo matrix unchanged, without inspecting or validating the assigned value."""
         print("ERROR: cannot set data manually.")
 
     @property
@@ -110,6 +111,7 @@ class RSData:
 
     @orbit_data.setter
     def orbit_data(self, value: dict[str, npt.NDArray | float]) -> None:
+        """Assignment is refused: it prints an error and leaves the stored orbit-data dictionary unchanged, without inspecting or validating the assigned value."""
         print("ERROR: cannot set orbit data manually.")
 
     def __str__(self) -> str:

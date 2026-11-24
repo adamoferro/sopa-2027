@@ -50,6 +50,10 @@ DT = 3 / 80e6
 DCG_DELAY = 11.98e-6
 RXWIN_STEP_0 = 100000.0
 
+# Dummy base filename for the no-I/O construction test: the reader object is
+# built on it, but the path is never touched.
+NO_IO_FILENAME_BASE = Path("/tmp")
+
 GEOM_DTYPE = np.dtype(
     [
         ("SCET_BLOCK_WHOLE", ">u4"),
@@ -200,7 +204,7 @@ def test_log_message_tables_complete() -> None:
 def test_decode_im_table() -> None:
     """Checks the acquisition-mode decoding: presumming, bits per sample and
     record bytes for one mode of each bit depth (4-bit: 3, 6-bit: 11, 8-bit: 19)."""
-    d, _ = _make_edr(Path("/tmp"))
+    d, _ = _make_edr(NO_IO_FILENAME_BASE)
     assert d._decode_im(3) == (16, 4, 1800)
     assert d._decode_im(11) == (8, 6, 2700)
     assert d._decode_im(19) == (4, 8, 3600)

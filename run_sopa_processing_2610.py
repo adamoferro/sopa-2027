@@ -21,6 +21,14 @@
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
 
+"""Example program running the complete SHARAD processing chain end to end:
+it reads a PDS EDR product, generates the orbit data, simulates the surface
+clutter radargram with sfRSsim, focuses the measured data with SOFA, writes
+the simulation and focusing products as ENVI files and produces the
+companion plots (ground track on the DEM, simulated radargram, first-return
+locations, closest-clutter ground distances, focused radargram).
+"""
+
 import os
 import sys
 

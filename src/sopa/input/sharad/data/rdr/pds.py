@@ -173,12 +173,11 @@ class RDR(RSData):
         return False
 
     def _decode_im(self, im: int) -> int:
-        """
-        service function that returns a tuple containing the
-        main parameters of the acquisition mode
-        """
-        id = self._IMS.index(im)
-        return self._IM_PRESUMMING[id]
+        """Service function that returns the presumming factor of the
+        acquisition mode selected by `im`, looked up in the internal
+        acquisition-mode table (a single int, not a tuple)."""
+        mode_index = self._IMS.index(im)
+        return self._IM_PRESUMMING[mode_index]
 
     def _read_rdr_data_header(self) -> tuple[dict[str, Any], str] | None:
         try:
