@@ -126,7 +126,7 @@ class sfRSsim(_SIMBase):
 
     @staticmethod  # defined static to allow calling from ray avoiding the "pickling" of the object
     def _simulate_frame_range(
-        id: int,
+        range_id: int,
         n_processes: int,
         orbit_xyz: tuple[
             npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]
@@ -164,7 +164,7 @@ class sfRSsim(_SIMBase):
             dict[int, npt.NDArray[np.float64]],
         ],
     ]:
-        """Per-frame facet computation described in the class docstring: surface-grid DEM sampling, facet normals/approximate areas, two-way travel times, image accumulation, and first-return/ground-distance/ROI bookkeeping. With `alt_unit_vector_carry` the along-track unit vector is seeded with the value the serial loop would have carried into the range's first frame (needed only when a partitioned range starts exactly at the track's last simulated frame, which reuses the previous frame's value); the per-frame progress prints run only with `verbose` (the parallel paths call this with `verbose=False` and the parent prints the per-range progress instead)."""
+        """Per-frame facet computation described in the class docstring: surface-grid DEM sampling, facet normals/approximate areas, two-way travel times, image accumulation, and first-return/ground-distance/ROI bookkeeping. With `alt_unit_vector_carry` the along-track unit vector is seeded with the value the serial loop would have carried into the range's first frame (needed only when a partitioned range starts exactly at the track's last simulated frame, which reuses the previous frame's value); a range whose first frame is the track's last without a carry (a single-frame simulated track) holds no displacement to form the direction from, so its along-track unit vector is defined as NaN and the ROI along-track incidence angle degenerates to NaN; the per-frame progress prints run only with `verbose` (the parallel paths call this with `verbose=False` and the parent prints the per-range progress instead)."""
         cos_exp = further_pars[0]
 
         _C = 299792458.0
@@ -187,12 +187,14 @@ class sfRSsim(_SIMBase):
         # unit vector but reuses the value from the previous simulated frame;
         # a range partitioned off exactly at that frame is seeded with the
         # carried value by the parent (within a range the loop below reuses
-        # its own previous value, exactly as the serial loop does).
+        # its own previous value, exactly as the serial loop does). A
+        # single-frame range without a carry has neither a predecessor nor a
+        # successor; its loop iteration defines the value as NaN instead.
         if alt_unit_vector_carry is not None:
             alt_unit_vector = alt_unit_vector_carry
 
-        status_str_pre = f"\t{'|\t\t' * id}"
-        status_str_post = "\t\t|" * (n_processes - id - 1)
+        status_str_pre = f"\t{'|\t\t' * range_id}"
+        status_str_post = "\t\t|" * (n_processes - range_id - 1)
         last_status = -1
         for count, i_frame_tbs in enumerate(frame_range):
             if count == n_frames_to_be_simulated - 1:
@@ -236,6 +238,15 @@ class sfRSsim(_SIMBase):
                     np.array([[[alt_unit_x]], [[alt_unit_y]], [[alt_unit_z]]])
                 )
                 # act_unit_vector = np.cross(alt_unit_vector, sc_cart_unit_vector, axis=0)
+            elif count == 0 and alt_unit_vector_carry is None:
+                # First simulated frame of the range is the track's last and
+                # no value was carried in: there is no previous value to
+                # reuse and no successor frame to difference against. Only a
+                # single-frame simulated track reaches this branch, which
+                # holds no displacement to form the direction from, so the
+                # along-track unit vector is defined as NaN and the ROI
+                # along-track incidence angle degenerates to NaN.
+                alt_unit_vector = np.full((3, 1, 1), np.nan)
             else:
                 pass  # do nothing, use the old one (TODO improve this!)
 

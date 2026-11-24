@@ -116,7 +116,7 @@ class dRSsim(_SIMBase):
 
     @staticmethod  # defined static to allow calling from ray avoiding the "pickling" of the object
     def _simulate_frame_range(
-        id: int,
+        range_id: int,
         n_processes: int,
         orbit_xyz: tuple[
             npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]
@@ -164,8 +164,8 @@ class dRSsim(_SIMBase):
         roi_lats = dict()
         roi_lons = dict()
 
-        status_str_pre = f"\t{'|\t\t' * id}"
-        status_str_post = "\t\t|" * (n_processes - id - 1)
+        status_str_pre = f"\t{'|\t\t' * range_id}"
+        status_str_post = "\t\t|" * (n_processes - range_id - 1)
         last_status = -1
         for count, i_frame_tbs in enumerate(frame_range):
             if count == n_frames_to_be_simulated - 1:

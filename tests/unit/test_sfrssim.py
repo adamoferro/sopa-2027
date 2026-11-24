@@ -28,6 +28,8 @@ peak placement, facet-weighted energy, first-return bookkeeping and the
 uncertainty mask.
 """
 
+from typing import Any
+
 import numpy as np
 import numpy.typing as npt
 import pytest
@@ -43,6 +45,8 @@ N_HALF_APERTURE = 2
 FRAME_START = N_HALF_APERTURE
 FRAME_END = 10
 N_SIMULATED = FRAME_END - FRAME_START  # arange(start, end) with skip 1
+DEGENERATE_FRAME = N_FRAMES - 2  # a [N-2, N-1) requested range selects this frame alone
+ROI_SAMPLE_LIMIT = 400
 
 
 def _dem() -> MOLA128:
@@ -187,3 +191,108 @@ def test_process_count_partition_invariance_with_last_frame_carry(
                     assert serial_values.tobytes() == partitioned_dict[roi_id].tobytes()
         else:
             assert serial_part.tobytes() == partitioned_part.tobytes()
+
+
+def _degenerate_frame_range_call(
+    alt_unit_vector_carry: npt.NDArray[np.float64] | None = None,
+) -> tuple[Any, ...]:
+    """Runs `sfRSsim._simulate_frame_range` exactly as the serial path would
+    for a single-frame selection at DEGENERATE_FRAME (the requested range
+    [N-2, N-1] ends at the track's last frame, so the first simulated frame
+    is the simulated track's last), with a ROI image covering every in-range
+    sample so the along-track incidence bookkeeping runs on it."""
+    orbit = _orbit_data()
+    selection = slice(DEGENERATE_FRAME, DEGENERATE_FRAME + 1)
+    orbit_xyz = (
+        orbit["X"][selection],
+        orbit["Y"][selection],
+        orbit["Z"][selection],
+    )
+    lat = orbit["Lat"][selection]
+    lon = orbit["Lon"][selection]
+    UTMNorthing, UTMEasting, UTMZone, _ = MARS_IAU2000().LL_to_UTM(lat, lon)
+    dem_radius = _dem().get_dem_radius_from_lat_lon(lat, lon)
+    # The receive-window reference of the unset-rxwin branch (the synthetic
+    # orbit data leave rxwin_time_s zeroed) and a single-frame alignment
+    # shift of zero, both matching what _pre_simulate computes.
+    t_surface_ref = 2.0 * (orbit["Radius"][selection] - dem_radius) / 299792458.0
+    rxwin_ref = np.min(t_surface_ref) - 200 * 37.5e-9
+    roi_img = np.zeros((ROI_SAMPLE_LIMIT, 1), dtype="int32")
+    roi_img[1:ROI_SAMPLE_LIMIT, 0] = np.arange(1, ROI_SAMPLE_LIMIT)
+    shrunk = _make_sim()
+    return sfRSsim._simulate_frame_range(
+        0,
+        1,
+        orbit_xyz,
+        np.arange(1),
+        1334,  # 667 * 2 output samples; a single frame carries no alignment shift
+        np.zeros(1),  # local direction: sim_base would pass 0 for a single frame
+        UTMNorthing,
+        UTMEasting,
+        UTMZone,
+        rxwin_ref,
+        np.zeros(1),
+        37.5e-9,
+        _dem(),
+        MARS_IAU2000(),
+        shrunk.alt_sim_matrix,
+        shrunk.act_sim_matrix,
+        8,
+        [1000],  # cos_exp
+        roi_img,
+        alt_unit_vector_carry=alt_unit_vector_carry,
+    )
+
+
+def test_first_frame_of_track_last_range_without_carry_is_defined() -> None:
+    """Checks the serial-path degenerate case: a frame range whose first (and
+    only) simulated frame is the simulated track's last, with no carry, must
+    not raise NameError from the unbound along-track unit vector. The ROI
+    incidence angles stay finite while the along-track ones, whose direction
+    a single-frame track cannot provide, come out NaN; with the carry the
+    parallel parent would hand such a range, every output is finite and all
+    but the along-track angles are byte-identical to the carry-free run."""
+    (
+        sim_image,
+        uncert_image,
+        _fr_lats,
+        _fr_lons,
+        _gd_min,
+        _gd_max,
+        (roi_lats, roi_lons, roi_ias, roi_alt_ias),
+    ) = _degenerate_frame_range_call()
+    assert np.nansum(sim_image) > 0
+    assert np.all(uncert_image == 0)
+    assert len(roi_alt_ias) == ROI_SAMPLE_LIMIT - 1
+    assert sum(len(values) for values in roi_lats.values()) > 0
+    assert all(np.all(np.isnan(values)) for values in roi_alt_ias.values())
+    assert all(np.all(np.isfinite(values)) for values in roi_ias.values())
+    assert all(np.all(np.isfinite(values)) for values in roi_lats.values())
+    assert all(np.all(np.isfinite(values)) for values in roi_lons.values())
+
+    carry = sim_base_module._alt_unit_vector_carry(
+        (_orbit_data()["X"], _orbit_data()["Y"], _orbit_data()["Z"]),
+        DEGENERATE_FRAME - 1,
+    )
+    (
+        carried_sim_image,
+        carried_uncert_image,
+        _carried_fr_lats,
+        _carried_fr_lons,
+        _carried_gd_min,
+        _carried_gd_max,
+        (
+            carried_roi_lats,
+            carried_roi_lons,
+            carried_roi_ias,
+            carried_roi_alt_ias,
+        ),
+    ) = _degenerate_frame_range_call(alt_unit_vector_carry=carry)
+    assert carried_sim_image.tobytes() == sim_image.tobytes()
+    assert carried_uncert_image.tobytes() == uncert_image.tobytes()
+    assert list(carried_roi_lats.keys()) == list(roi_lats.keys())
+    for roi_id, values in roi_lats.items():
+        assert carried_roi_lats[roi_id].tobytes() == values.tobytes()
+        assert carried_roi_lons[roi_id].tobytes() == roi_lons[roi_id].tobytes()
+        assert carried_roi_ias[roi_id].tobytes() == roi_ias[roi_id].tobytes()
+        assert np.all(np.isfinite(carried_roi_alt_ias[roi_id]))
