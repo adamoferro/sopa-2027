@@ -86,8 +86,13 @@ class TrackPlotOnDEM:
             / 100
         )
         long_range_len = len(long_range)
-        step_x = int(long_range_len / (self._n_labels - 1))
-        step_y = int(lat_range_len / (self._n_labels - 1))
+        # A window narrower than _n_labels - 1 DEM pixels makes both integer
+        # divisions yield step 0 and np.arange raise ZeroDivisionError: clamp
+        # the step to one label per DEM pixel (an empty, extent-zero window
+        # then simply gets no labels). Windows at or above that size keep the
+        # exact original step, tick positions, and label strings.
+        step_x = max(int(long_range_len / (self._n_labels - 1)), 1)
+        step_y = max(int(lat_range_len / (self._n_labels - 1)), 1)
         labels_x_pos = np.arange(0, long_range_len, step_x)
         labels_y_pos = np.arange(0, lat_range_len, step_y)
         labels_x = long_range[::step_x]
