@@ -26,12 +26,18 @@ grid contributes one count to the range sample corresponding to its
 two-way travel time.
 """
 
-from typing import Any
-
 import numpy as np
 import numpy.typing as npt
 from scipy.ndimage import gaussian_filter
 
+from sopa._typing import (
+    DEM,
+    FrameSimulationResult,
+    GeometryConverter,
+    Instrument,
+    OrbitData,
+    SimulationParameters,
+)
 from sopa.processing.simulators.sim_base import (
     _sample_positions_to_int,
     _SIMBase,
@@ -53,13 +59,13 @@ class dRSsim(_SIMBase):
 
     def __init__(
         self,
-        geom_obj: Any,
-        dem_obj: Any,
-        param_obj: Any,
+        geom_obj: GeometryConverter,
+        dem_obj: DEM,
+        param_obj: SimulationParameters,
         n_processes: int = 1,
         use_data_dt: bool = True,
         simulate_chirp: bool = True,
-        instr_obj: Any = None,
+        instr_obj: Instrument | None = None,
         roi_img: npt.NDArray | None = None,
     ) -> None:
         super().__init__(
@@ -97,20 +103,7 @@ class dRSsim(_SIMBase):
             [len(alt_sim_range), 1]
         )
 
-    def simulate(
-        self, orbit_data: dict[str, npt.NDArray[np.float64] | float]
-    ) -> (
-        tuple[
-            npt.NDArray[np.float64],
-            npt.NDArray[np.uint8],
-            npt.NDArray[np.float64],
-            npt.NDArray[np.float64],
-            npt.NDArray[np.float64],
-            npt.NDArray[np.float64],
-            tuple[Any, ...],
-        ]
-        | None
-    ):
+    def simulate(self, orbit_data: OrbitData) -> FrameSimulationResult | None:
         """Runs the point-based simulation over the selected frames of the given track."""
         return super().simulate(orbit_data, dRSsim._simulate_frame_range)
 
@@ -130,8 +123,8 @@ class dRSsim(_SIMBase):
         rxwin_ref: float,
         input_scr_data_shifts_alignment_t: npt.NDArray[np.float64],
         dt: float,
-        dem_obj: Any,
-        geom_obj: Any,
+        dem_obj: DEM,
+        geom_obj: GeometryConverter,
         alt_sim_matrix: npt.NDArray[np.float64],
         act_sim_matrix: npt.NDArray[np.float64],
         gaussian_filter_sigma: int,

@@ -29,10 +29,8 @@ handling and read-only access to the echo matrix.
 # - modify print with logger
 
 import gzip
-from typing import Any
 
-import numpy.typing as npt
-
+from sopa._typing import EchoMatrix, MessageLogger, OrbitData
 from sopa.log.log import fake_logger
 
 
@@ -55,7 +53,7 @@ class RSData:
         presumming: int = 0,
         filename_base: str = "",
         use_gzip_and_iso8859_1: bool = False,
-        logger: Any = None,
+        logger: MessageLogger | None = None,
     ) -> None:
         self.dataset_name = dataset_name
         self.n_frames = 0
@@ -87,7 +85,7 @@ class RSData:
             )
 
     @property
-    def data(self) -> npt.NDArray | None:
+    def data(self) -> EchoMatrix | None:
         """Echo matrix (read-only); accessing it before loading prints an error and returns None."""
         if self._data is None:
             print("ERROR: data not yet read.")
@@ -96,12 +94,12 @@ class RSData:
             return self._data
 
     @data.setter
-    def data(self, value: npt.NDArray) -> None:
+    def data(self, value: EchoMatrix) -> None:
         """Assignment is refused: it prints an error and leaves the stored echo matrix unchanged, without inspecting or validating the assigned value."""
         print("ERROR: cannot set data manually.")
 
     @property
-    def orbit_data(self) -> dict[str, npt.NDArray | float] | None:
+    def orbit_data(self) -> OrbitData | None:
         """Orbit-data dictionary (read-only); accessing it before generation prints an error and returns None."""
         if self._orbit_data is None:
             print("ERROR: orbit data not yet generated.")
@@ -110,7 +108,7 @@ class RSData:
             return self._orbit_data
 
     @orbit_data.setter
-    def orbit_data(self, value: dict[str, npt.NDArray | float]) -> None:
+    def orbit_data(self, value: OrbitData) -> None:
         """Assignment is refused: it prints an error and leaves the stored orbit-data dictionary unchanged, without inspecting or validating the assigned value."""
         print("ERROR: cannot set orbit data manually.")
 
@@ -132,9 +130,7 @@ class RSData:
             print("ERROR: dataset base filename not set.")
             return False
 
-    def set_orbit_data_from_ext(
-        self, ext_orbit_data: dict[str, npt.NDArray | float]
-    ) -> None:
+    def set_orbit_data_from_ext(self, ext_orbit_data: OrbitData) -> None:
         """Installs externally produced orbit data, bypassing `generate_orbit_data`."""
         self._orbit_data = ext_orbit_data
 

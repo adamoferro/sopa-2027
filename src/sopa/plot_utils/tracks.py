@@ -26,13 +26,13 @@ return positions over DEM radius images, with lat/lon axis labels derived
 from the DEM sampling.
 """
 
-from typing import Any
-
 import matplotlib
 import matplotlib.patches as mpatches
 import numpy as np
 import numpy.typing as npt
 from matplotlib import pyplot as pp
+
+from sopa._typing import DEM
 
 
 class TrackPlotOnDEM:
@@ -40,7 +40,7 @@ class TrackPlotOnDEM:
 
     def __init__(
         self,
-        dem_obj: Any,
+        dem_obj: DEM,
         track_lats: npt.NDArray[np.float64],
         track_lons: npt.NDArray[np.float64],
         auto_show: bool = False,
@@ -140,7 +140,7 @@ class TrackAndFirstReturnsPlotOnDEM(TrackPlotOnDEM):
 
     def __init__(
         self,
-        dem_obj: Any,
+        dem_obj: DEM,
         track_lats: npt.NDArray[np.float64],
         track_lons: npt.NDArray[np.float64],
         fr_lats: npt.NDArray[np.float64],
@@ -223,7 +223,7 @@ class TrackAndROIReturnsPlotOnDEM(TrackPlotOnDEM):
 
     def __init__(
         self,
-        dem_obj: Any,
+        dem_obj: DEM,
         track_lats: npt.NDArray[np.float64],
         track_lons: npt.NDArray[np.float64],
         roi_pos: tuple[dict[int, npt.NDArray[np.float64]], ...],

@@ -36,6 +36,7 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
+from sopa._typing import MessageLogger
 from sopa.geometry.coordinate_converter import CoordinateConverter
 from sopa.input.data_base import RSData
 from sopa.input.sharad.data.rdr import pds_log as log_messages
@@ -51,7 +52,7 @@ class RDR(RSData):
         presumming: int = 0,
         filename_base: str = "",
         use_gzip_and_iso8859_1: bool = False,
-        logger: Any = None,
+        logger: MessageLogger | None = None,
         read_hk_data: bool = False,
     ) -> None:
         super().__init__(

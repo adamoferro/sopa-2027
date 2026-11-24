@@ -27,11 +27,11 @@ matching geometric table (_geom.tab).
 """
 
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 import numpy.typing as npt
 
+from sopa._typing import MessageLogger
 from sopa.geometry.coordinate_converter import CoordinateConverter
 from sopa.input.data_base import RSData
 from sopa.input.sharad.data.rdr import pds_us_log as log_messages
@@ -49,7 +49,7 @@ class RDR(RSData):
         presumming: int = 0,
         filename_base: str = "",
         use_gzip_and_iso8859_1: bool = False,
-        logger: Any = None,
+        logger: MessageLogger | None = None,
     ) -> None:
         super().__init__(
             dataset_name, pri, presumming, filename_base, use_gzip_and_iso8859_1, logger
@@ -110,7 +110,7 @@ class RDR(RSData):
         self._ancillary_already_read = True
         return True
 
-    def _read_rdr_data_geom_file(self) -> npt.NDArray | None:
+    def _read_rdr_data_geom_file(self) -> npt.NDArray[np.void] | None:
         def parsetime(v: str) -> np.datetime64:
             """Converts a text timestamp to numpy.datetime64."""
             return np.datetime64(v)

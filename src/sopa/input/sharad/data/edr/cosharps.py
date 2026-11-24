@@ -41,6 +41,7 @@ import numpy.typing as npt
 from scipy import ndimage as nd
 from scipy.interpolate import interp1d
 
+from sopa._typing import MessageLogger
 from sopa.input.data_base import RSData
 from sopa.input.sharad.data.edr import cosharps_log as log_messages
 
@@ -55,7 +56,7 @@ class EDR(RSData):
         presumming: int = 0,
         filename_base: str = "",
         use_gzip_and_iso8859_1: bool = False,
-        logger: Any = None,
+        logger: MessageLogger | None = None,
         read_hk_data: bool = False,
         keep_data_with_problems: bool = False,
     ) -> None:
@@ -304,7 +305,7 @@ class EDR(RSData):
             self.logger.log_messages(log_messages.ERR_MESSAGES["header_file_decode"])
         return None
 
-    def _read_raw_data_aux_file(self) -> npt.NDArray | None:
+    def _read_raw_data_aux_file(self) -> npt.NDArray[np.void] | None:
         try:
             # real products carry float values in the not_used column (e.g. "0.000")
             aux_data = np.loadtxt(
@@ -321,7 +322,7 @@ class EDR(RSData):
             self.logger.log_messages(log_messages.ERR_MESSAGES["aux_file_read"])
         return None
 
-    def _read_raw_data_geom_file(self) -> npt.NDArray | None:
+    def _read_raw_data_geom_file(self) -> npt.NDArray[np.void] | None:
         def parsetime(v: str) -> np.datetime64:
             """Converts a text timestamp to numpy.datetime64."""
             return np.datetime64(v)

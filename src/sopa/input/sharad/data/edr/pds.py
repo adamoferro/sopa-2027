@@ -41,6 +41,7 @@ import bitstring as bs
 import numpy as np
 import numpy.typing as npt
 
+from sopa._typing import MessageLogger
 from sopa.geometry.coordinate_converter import CoordinateConverter
 from sopa.input.data_base import RSData
 from sopa.input.sharad.data.edr import pds_log as log_messages
@@ -56,7 +57,7 @@ class EDR(RSData):
         presumming: int = 0,
         filename_base: str = "",
         use_gzip_and_iso8859_1: bool = False,
-        logger: Any = None,
+        logger: MessageLogger | None = None,
         read_hk_data: bool = False,
         keep_data_with_problems: bool = False,
     ) -> None:
@@ -357,7 +358,7 @@ class EDR(RSData):
             self.logger.log_messages(log_messages.ERR_MESSAGES["header_file_decode"])
         return None
 
-    def _read_raw_data_geom_file(self) -> npt.NDArray | None:
+    def _read_raw_data_geom_file(self) -> npt.NDArray[np.void] | None:
         dt = np.dtype(
             [
                 ("SCET_BLOCK_WHOLE", ">u4"),

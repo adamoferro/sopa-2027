@@ -34,6 +34,15 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
+from sopa._typing import (
+    DEM,
+    FrameSimulationCallback,
+    FrameSimulationResult,
+    GeometryConverter,
+    Instrument,
+    OrbitData,
+    SimulationParameters,
+)
 from sopa.geometry.coordinate_converter import CoordinateConverter as cc
 from sopa.processing.focusers.sofa import (
     _available_memory_bytes,
@@ -42,11 +51,35 @@ from sopa.processing.focusers.sofa import (
 )
 from sopa.processing.utils import ProcessingUtils
 
+# Fork-inherited simulation data handed to the pool workers: the simulation
+# callback, the per-frame orbit position vectors, the sample count, the local
+# direction and UTM vectors, the UTM zone list, the shift-alignment time, the
+# DEM and geometry objects, the simulation matrices and the ROI image.
+type _ForkSimulationContext = tuple[
+    FrameSimulationCallback,
+    tuple[
+        npt.NDArray[np.float64],
+        npt.NDArray[np.float64],
+        npt.NDArray[np.float64],
+    ],
+    int,
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    list[str],
+    float,
+    DEM,
+    GeometryConverter,
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64] | None,
+]
+
 # Simulation data handed to the parallel frame simulation (phase-6 P6): set by
 # _SIMBase.simulate before the fork-based pool is created and resolved by the
 # workers through fork copy-on-write, so the multi-GB DEM object and the
 # per-track arrays are never pickled through submit().
-_FORK_SIMULATION_CONTEXT: Any | None = None
+_FORK_SIMULATION_CONTEXT: _ForkSimulationContext | None = None
 
 
 def _alt_unit_vector_carry(
@@ -69,7 +102,7 @@ def _alt_unit_vector_carry(
 
 def _pool_simulate_frame_range(
     range_id: int, n_ranges: int, *range_parameters: Any
-) -> Any:
+) -> FrameSimulationResult:
     """Worker-side entry point of the parallel frame simulation: resolves the shared simulation data from the fork-inherited module reference (never from pickled arguments) and runs the same `_simulate_frame_range` operation sequence as the serial path for one frame range, with the worker-side progress prints suppressed because the parent prints the per-range progress."""
     if _FORK_SIMULATION_CONTEXT is None:
         raise RuntimeError(
@@ -127,16 +160,8 @@ def _pool_simulate_frame_range(
 
 
 def _assemble_range_results(
-    range_results: list[tuple[Any, ...]],
-) -> tuple[
-    npt.NDArray[np.float64],
-    npt.NDArray[np.uint8],
-    npt.NDArray[np.float64],
-    npt.NDArray[np.float64],
-    npt.NDArray[np.float64],
-    npt.NDArray[np.float64],
-    tuple[dict[int, npt.NDArray[np.float64]], ...],
-]:
+    range_results: list[FrameSimulationResult],
+) -> FrameSimulationResult:
     """Assembles the per-frame-range simulation results into the whole-track outputs: the image blocks and first-return values are concatenated in frame order (the per-frame writes are column-disjoint, so the result is independent of the range partition), and the per-range ROI dictionaries are merged key by key in frame order."""
     sim_image = np.concatenate([result[0] for result in range_results], axis=1)
     uncert_image = np.concatenate([result[1] for result in range_results], axis=1)
@@ -202,13 +227,13 @@ class _SIMBase:
 
     def __init__(
         self,
-        geom_obj: Any,
-        dem_obj: Any,
-        param_obj: Any,
+        geom_obj: GeometryConverter,
+        dem_obj: DEM,
+        param_obj: SimulationParameters,
         n_processes: int = 1,
         use_data_dt: bool = True,
         simulate_chirp: bool = False,
-        instr_obj: Any = None,
+        instr_obj: Instrument | None = None,
         roi_img: npt.NDArray | None = None,
     ) -> None:
         self.DEFAULT_DT = 37.5e-9
@@ -251,7 +276,7 @@ class _SIMBase:
         self.n_processes = n_processes
 
     def _pre_simulate(
-        self, orbit_data: dict[str, npt.NDArray[np.float64] | float]
+        self, orbit_data: OrbitData
     ) -> (
         tuple[
             int,
@@ -461,21 +486,10 @@ class _SIMBase:
 
     def simulate(
         self,
-        orbit_data: dict[str, npt.NDArray[np.float64] | float],
-        sim_callback: Any,
+        orbit_data: OrbitData,
+        sim_callback: FrameSimulationCallback,
         further_pars: list[float] = [],
-    ) -> (
-        tuple[
-            npt.NDArray[np.float64],
-            npt.NDArray[np.uint8],
-            npt.NDArray[np.float64],
-            npt.NDArray[np.float64],
-            npt.NDArray[np.float64],
-            npt.NDArray[np.float64],
-            tuple[Any, ...],
-        ]
-        | None
-    ):
+    ) -> FrameSimulationResult | None:
         """Runs the simulation over the selected frames through `sim_callback` and returns the simulated image, its uncertainty mask, the first-return lat/lon, the ground-distance min/max images and the ROI positions; returns None on input errors. With n_processes above 1 the per-frame-range simulation is dispatched to a fork-based process pool (worker count capped by the CPU count and the memory-based worker budget) and the outputs are assembled in frame order, which leaves them independent of the worker count; the frame ranges are derived per requested process, so a smaller effective worker count only queues more ranges."""
 
         pre_simulate_output = self._pre_simulate(orbit_data)
@@ -639,7 +653,7 @@ class _SIMBase:
             )
             n_workers = min(self.n_processes, memory_worker_cap)
 
-            range_results: list[Any] = []
+            range_results: list[FrameSimulationResult] = []
             if n_workers > 1:
                 # The pool uses the explicit fork context so the workers
                 # inherit the DEM object and the per-track arrays

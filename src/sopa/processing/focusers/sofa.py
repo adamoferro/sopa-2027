@@ -43,6 +43,12 @@ import numpy as np
 import numpy.typing as npt
 from scipy.ndimage import gaussian_filter1d
 
+from sopa._typing import (
+    FocusingParameters,
+    GeometryConverter,
+    Instrument,
+    RawDataset,
+)
 from sopa.processing.parameters import half_aperture_frames_from_coherence_time
 from sopa.processing.utils import ProcessingUtils
 
@@ -82,7 +88,7 @@ _OPENBLAS_SET_NUM_THREADS_SYMBOLS = (
 # Raw-data object handed to the parallel block focus: set by SOFA.focus before
 # the fork-based pool is created and resolved by the workers through fork
 # copy-on-write, so the multi-GB raw array is never pickled through submit().
-_FORK_BLOCK_FOCUS_DATA_OBJ: Any | None = None
+_FORK_BLOCK_FOCUS_DATA_OBJ: RawDataset | None = None
 
 
 def _available_memory_bytes() -> int | None:
@@ -184,11 +190,11 @@ class SOFA:
 
     def __init__(
         self,
-        instr_obj: Any,
-        geom_obj: Any,
+        instr_obj: Instrument,
+        geom_obj: GeometryConverter,
         dem_radius_profile: npt.NDArray[np.int32],
-        data_obj: Any,
-        param_obj: Any,
+        data_obj: RawDataset,
+        param_obj: FocusingParameters,
         n_processes: int = 1,
         read_block_size_max: int = 5000,
         debug_mode: bool = False,
@@ -322,9 +328,6 @@ class SOFA:
                 "(including no filter coeff.)",
             )
             print("   std devs =", self._gf_std_devs)
-        else:
-            if debug_mode:
-                print("NO Gaussian filtering.")
 
         self._range_weighting_window_original = np.ones(int(self._SIZE_RANGE_FFT / 2.0))
         rwfs = param_obj.range_weighting_function
@@ -828,7 +831,7 @@ class SOFA:
         dem_radius_profile: npt.NDArray[np.int32],
         fftfreqs: npt.NDArray[np.float64],
         delay_start_shifts: npt.NDArray[np.float64],
-        data_obj: Any,
+        data_obj: RawDataset,
         *,
         verbose: bool = True,
     ) -> npt.NDArray[np.float64]:
