@@ -27,11 +27,14 @@ synthetic image, with the histogram-based, fixed-limit and not-a-number-aware
 dynamic-range variants. Pixel content is not verified.
 """
 
+import warnings
+
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import pytest
 
+from sopa.plot_utils import radargrams
 from sopa.plot_utils.radargrams import GroundDistancePlot, RadargramPlot, SimulationPlot
 
 
@@ -45,6 +48,53 @@ def image() -> npt.NDArray[np.float64]:
 def _one_figure_produced() -> None:
     """Asserts that the plotting call left exactly one open figure."""
     assert len(plt.get_fignums()) == 1
+
+
+class _StubBackendRegistry:
+    """Test double of `matplotlib.backends.backend_registry`: answers every
+    backend resolution with the configured GUI framework (None stands for a
+    non-interactive backend such as Agg)."""
+
+    def __init__(self, gui_framework: str | None) -> None:
+        self._gui_framework = gui_framework
+
+    def resolve_backend(self, backend: str) -> tuple[str, str | None]:
+        """Returns the requested backend name and the configured GUI framework."""
+        return backend, self._gui_framework
+
+
+def test_plot_skips_show_on_non_interactive_backend(
+    image: npt.NDArray[np.float64], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Checks the show guard: a backend resolution without a GUI framework
+    skips the blocking show call entirely, with no warning emitted."""
+    monkeypatch.setattr(radargrams, "backend_registry", _StubBackendRegistry(None))
+    show_calls: list[str] = []
+
+    def fake_show() -> None:
+        show_calls.append("show")
+
+    monkeypatch.setattr(radargrams.pp, "show", fake_show)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        RadargramPlot(image).plot()
+    assert show_calls == []
+
+
+def test_plot_calls_show_on_gui_backend(
+    image: npt.NDArray[np.float64], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Checks the show guard: a backend resolution with a GUI framework keeps
+    the blocking show call (the interactive path is unchanged)."""
+    monkeypatch.setattr(radargrams, "backend_registry", _StubBackendRegistry("qt"))
+    show_calls: list[str] = []
+
+    def fake_show() -> None:
+        show_calls.append("show")
+
+    monkeypatch.setattr(radargrams.pp, "show", fake_show)
+    RadargramPlot(image).plot()
+    assert show_calls == ["show"]
 
 
 def test_radargram_plot_default_histogram_limits(
@@ -78,3 +128,18 @@ def test_ground_distance_plot_with_nans() -> None:
     gd[:100, :] = np.nan
     GroundDistancePlot(gd).plot()
     _one_figure_produced()
+
+
+def test_ground_distance_plot_nan_colormap_without_deprecation() -> None:
+    """Checks the ground-distance NaN colormap: it is built through
+    `with_extremes`, so no PendingDeprecationWarning fires, and the rendered
+    image's colormap reports opaque black as the not-a-number color."""
+    rng = np.random.default_rng(42)
+    gd = rng.uniform(0.0, 20.0, size=(300, 40))
+    gd[:100, :] = np.nan
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        GroundDistancePlot(gd).plot()
+    _one_figure_produced()
+    cmap = plt.gcf().axes[0].images[0].get_cmap()
+    np.testing.assert_array_equal(cmap.get_bad(), (0.0, 0.0, 0.0, 1.0))

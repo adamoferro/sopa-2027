@@ -30,6 +30,8 @@ the IAU 2000 Mars ellipsoid, and the remaining helpers against their
 geometric definitions.
 """
 
+import warnings
+
 import numpy as np
 import numpy.typing as npt
 import pytest
@@ -230,18 +232,25 @@ def _angle_between_matrix_loop_reference(
     for i_y in np.arange(angle.shape[0]):
         for i_x in np.arange(angle.shape[1]):
             angle[i_y, i_x] = np.dot(v1_u[:, i_y, i_x], v2_u[:, i_y, i_x])
-    angle = np.arccos(angle)
+    # the NaN fallback needs the same out-of-domain arccos values as the
+    # vectorized branch; errstate only silences the IEEE-754 report
+    with np.errstate(invalid="ignore"):
+        angle = np.arccos(angle)
     nans = np.isnan(angle)
     angle[nans] = ((v1_u[:, nans] == v2_u[:, nans]).all()) * np.pi
     return angle
 
 
+@pytest.mark.filterwarnings("error::RuntimeWarning")
 def test_angle_between_matrix_bitwise_against_loop_reference() -> None:
     """Pins the vectorized matrix branch of `angle_between` bitwise against
     the pre-vectorization per-element np.dot loop, on fixed-seed random
     matrices and on crafted columns with exact-parallel and exact-antiparallel
     pairs whose normalized dot products round past +/-1 and drive arccos to
-    NaN, exercising the fallback and its whole-matrix semantics."""
+    NaN, exercising the fallback and its whole-matrix semantics; the test runs
+    with RuntimeWarning as an error, so neither the errstate-guarded arccos of
+    the vectorized branch nor the reference implementation here may emit an
+    invalid-value warning."""
     rng = np.random.default_rng(2027)
     v1_random = rng.standard_normal((3, 7, 9))
     v2_random = rng.standard_normal((3, 7, 9))
@@ -293,8 +302,34 @@ def test_angle_between_matrix_bitwise_against_loop_reference() -> None:
         angles_mixed,
         _angle_between_matrix_loop_reference(v1_mixed, v2_mixed),
     )
-    nans_mixed = np.isnan(np.arccos(raw_mixed))
+    with np.errstate(invalid="ignore"):
+        nans_mixed = np.isnan(np.arccos(raw_mixed))
     assert (angles_mixed[nans_mixed] == 0.0).all()  # quirk: 0.0, not pi
+
+
+def test_angle_between_matrix_invalid_dot_products_stay_silent_and_identical() -> None:
+    """Checks the errstate guard of the matrix branch: the crafted column
+    whose exact-parallel normalized dot product rounds past +1 drives arccos
+    to NaN without any warning being recorded, and the returned angles are
+    bitwise the loop reference's (the NaN fallback semantics are untouched)."""
+    v1 = np.ones((3, 1, 3))
+    v2 = np.zeros((3, 1, 3))
+    v2[:, 0, 0] = [1.0, 1.0, 1.0]
+    v2[:, 0, 1] = [1.0, -1.0, 0.0]
+    v2[:, 0, 2] = [0.0, 1.0, -1.0]
+    raw = np.einsum(
+        "i...,i...->...",
+        CoordinateConverter.unit_vector(v1),
+        CoordinateConverter.unit_vector(v2),
+        optimize=False,
+    )
+    assert raw[0, 0] > 1.0  # out-of-domain dot product: arccos invalid, NaN expected
+    with warnings.catch_warnings(record=True) as records:
+        warnings.simplefilter("always")
+        angles = CoordinateConverter.angle_between(v1, v2)
+    assert not records
+    np.testing.assert_array_equal(angles, _angle_between_matrix_loop_reference(v1, v2))
+    assert angles[0, 0] == np.pi  # exact parallel column: fallback value
 
 
 def test_utm_roundtrip_northern_hemisphere(cc: MARS_IAU2000) -> None:

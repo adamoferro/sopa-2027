@@ -241,7 +241,11 @@ class CoordinateConverter:
         v2_u = CoordinateConverter.unit_vector(v2)
 
         if len(np.array(v2).shape) <= 1:
-            angle = np.arccos(np.dot(v1_u, v2_u))
+            # dot products rounding past +/-1 are expected here (the NaN
+            # fallback below consumes them); errstate only silences the
+            # IEEE-754 report, the returned values are unchanged
+            with np.errstate(invalid="ignore"):
+                angle = np.arccos(np.dot(v1_u, v2_u))
             if np.isnan(angle):
                 if (v1_u == v2_u).all():
                     return 0.0
@@ -249,7 +253,11 @@ class CoordinateConverter:
                     return np.pi
         else:
             angle = np.einsum("i...,i...->...", v1_u, v2_u, optimize=False)
-            angle = np.arccos(angle)
+            # dot products rounding past +/-1 are expected here (the NaN
+            # fallback below consumes them); errstate only silences the
+            # IEEE-754 report, the returned values are unchanged
+            with np.errstate(invalid="ignore"):
+                angle = np.arccos(angle)
             nans = np.isnan(angle)
             angle[nans] = ((v1_u[:, nans] == v2_u[:, nans]).all()) * np.pi
         return angle

@@ -30,6 +30,7 @@ import matplotlib
 import numpy as np
 import numpy.typing as npt
 from matplotlib import pyplot as pp
+from matplotlib.backends import backend_registry
 
 
 class _BaseRadargramPlot:
@@ -87,7 +88,9 @@ class _BaseRadargramPlot:
         return be[h_ok_ids[0]], be[h_ok_ids[-1]]
 
     def plot(self, cmap: str | matplotlib.colors.Colormap = "gray") -> None:
-        """Shows the prepared image with the given colormap and limits."""
+        """Shows the prepared image with the given colormap and limits; the
+        blocking show call runs only when the active backend has a GUI
+        framework (non-interactive backends skip it without a warning)."""
         pp.figure(figsize=(12, 6))
         pp.imshow(
             self._image[self._top_point : self._bottom_point, :],
@@ -100,7 +103,9 @@ class _BaseRadargramPlot:
         pp.ylabel("Samples", fontweight="bold")
         pp.xlabel("Frames", fontweight="bold")
         pp.colorbar()
-        pp.show()
+        _, gui_framework = backend_registry.resolve_backend(matplotlib.get_backend())
+        if gui_framework is not None:
+            pp.show()
 
 
 class RadargramPlot(_BaseRadargramPlot):
@@ -165,8 +170,6 @@ class GroundDistancePlot(_BaseRadargramPlot):
 
     def plot(self) -> None:
         """Same display as the base class, with a colormap whose not-a-number values are rendered black."""
-        nan_cmap = matplotlib.colormaps[
-            "gist_rainbow"
-        ].copy()  # 2026 port: matplotlib.cm.get_cmap was removed
-        nan_cmap.set_bad(color="black")
+        # 2026 port: matplotlib.cm.get_cmap was removed
+        nan_cmap = matplotlib.colormaps["gist_rainbow"].with_extremes(bad="black")
         super().plot(cmap=nan_cmap)
