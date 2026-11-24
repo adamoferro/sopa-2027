@@ -21,10 +21,10 @@
 #   (e.g., scientific papers, posters, images, other softwares)
 #   must be acknowledged.
 
-"""Unit tests of the ENVI reader/writer (sopa.io_utils.envi): dtype
-roundtrips, the complex-to-power conversion, the header text, the header
-parser (including multi-line values) and the reader's error and offset/band
-handling.
+"""Unit tests of the ENVI reader/writer (sopa.io_utils.envi): the datatype
+mapping tables, dtype roundtrips, the complex-to-power conversion, the header
+text, the header parser (including multi-line values) and the reader's error
+and offset/band handling.
 """
 
 from pathlib import Path
@@ -95,19 +95,52 @@ def test_header_contents(tmp_path: Path) -> None:
     assert "byte order = 0" in lines
 
 
-def test_int32_written_with_float32_type_code(tmp_path: Path) -> None:
-    """Documents the current int32 behavior: the writer stores int32 with the
-    ENVI type code 4 (32-bit float, shared with float32), so a read returns a
-    float32 array whose bit pattern equals the original int32 values
-    (inherited 2026-port behavior; flagged for the technical-debt page)."""
-    data = np.array([[1, 2], [3, 4]], dtype="int32")
+def test_numpy_and_envi_datatype_maps() -> None:
+    """Checks both datatype tables entry by entry: the numpy-dtype-name to
+    ENVI type code map and the ENVI type code to numpy base dtype map are
+    exactly as intended, with int32 on ENVI type 3 (32-bit signed integer)
+    distinct from float32 on type 4."""
+    assert envi._NUMPY2ENVI_DATATYPE == {
+        "uint8": 1,
+        "int16": 2,
+        "int32": 3,
+        "float32": 4,
+        "float64": 5,
+        "complex64": 6,
+        "complex128": 9,
+        "uint16": 12,
+        "uint32": 13,
+        "int64": 14,
+        "uint64": 15,
+    }
+    assert envi._ENVI_DATATYPE2NUMPY == {
+        1: "u1",
+        2: "i2",
+        3: "i4",
+        4: "f4",
+        5: "f8",
+        6: "c8",
+        9: "c16",
+        12: "u2",
+        13: "u4",
+        14: "i8",
+        15: "u8",
+    }
+
+
+def test_int32_roundtrip(tmp_path: Path) -> None:
+    """Checks that an int32 array is stored with the ENVI int32 type code 3
+    (not the float32 code 4 that SOPA_2026 wrote on this latent path) and
+    round-trips with values and dtype preserved."""
+    rng = np.random.default_rng(7)
+    data = rng.integers(-2_000_000_000, 2_000_000_000, size=(5, 3)).astype("int32")
     base = tmp_path / "i32"
     assert envi.write(str(base), data) is True
-    assert "data type = 4" in (Path(str(base) + ".hdr")).read_text().splitlines()
+    assert "data type = 3" in (Path(str(base) + ".hdr")).read_text().splitlines()
     read_back = envi.read(str(base))
     assert read_back is not None
-    assert read_back.dtype == np.dtype("float32")
-    np.testing.assert_array_equal(read_back.view("int32"), data)
+    assert read_back.dtype == np.dtype("int32")
+    np.testing.assert_array_equal(read_back, data, strict=True)
 
 
 def test_read_missing_header(tmp_path: Path) -> None:

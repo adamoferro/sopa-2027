@@ -42,7 +42,7 @@ import numpy.typing as npt
 _NUMPY2ENVI_DATATYPE = {
     "uint8": 1,
     "int16": 2,
-    "int32": 4,
+    "int32": 3,  # ENVI type 3; SOPA_2026 wrote 4 (float32 collision, latent-bug fix)
     "float32": 4,
     "float64": 5,
     "complex64": 6,
