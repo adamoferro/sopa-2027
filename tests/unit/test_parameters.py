@@ -79,6 +79,51 @@ def test_frame_skip_without_meters() -> None:
     assert p.meters_skip is None
 
 
+def test_positional_parameter_order() -> None:
+    """Checks the positional parameter order of both containers: the focuser
+    accepts coherence_time_s as its sixth positional argument, directly
+    after frame_half_aperture and before squint_angle (a dataclass-style
+    field reorder would silently turn it into the squint angle), and the
+    simulator accepts the full shared parameter list positionally."""
+    p = FocuserParameters(0, -1, 1, None, None, 0.15)
+    assert p.coherence_time_s == 0.15
+    assert p.squint_angle == 0
+    assert p.frame_half_aperture == 0
+    assert p.frame_start == 0
+    p = FocuserParameters(0, -1, 1, None, 64, None, 1.0, 0.6)
+    assert p.frame_half_aperture == 64
+    assert p.coherence_time_s is None
+    assert p.squint_angle == 1.0
+    assert p.multilooking_doppler_bandwidth == 0.6
+    p = SimulatorParameters(10, 20, 2, 5000.0, 32, 1.5, "kaiser", 3.0)
+    assert p.frame_start == 32
+    assert p.frame_end == 20
+    assert p.frame_skip == 0
+    assert p.meters_skip == 5000.0
+    assert p.frame_half_aperture == 32
+    assert p.squint_angle == 1.5
+    assert p.range_weighting_function == "kaiser"
+    assert p.range_weighting_kaiser_beta == 3.0
+
+
+def test_identity_equality_hash_and_default_repr() -> None:
+    """Checks the deliberately kept object identity semantics: separately
+    constructed containers with equal values stay unequal (no value-based
+    equality), remain hashable as identity-based objects, and repr stays the
+    default object repr instead of a dataclass field listing."""
+    a = SimulatorParameters()
+    b = SimulatorParameters()
+    assert a is not b
+    assert a == a
+    assert a != b
+    assert len({a, b}) == 2
+    assert hash(a) == hash(a)
+    assert "frame_start" not in repr(a)
+    f = FocuserParameters()
+    assert f == f
+    assert "frame_start" not in repr(f)
+
+
 def test_rejects_non_positive_meters_skip() -> None:
     """Checks that a non-positive meters_skip refuses at construction for
     both parameter containers: the former zero sentinel cannot be used to
@@ -109,6 +154,20 @@ def test_rejects_non_positive_frame_skip() -> None:
         ValueError, match="ERROR: frame_skip must be positive when meters_skip"
     ):
         FocuserParameters(frame_skip=0)
+
+
+def test_validation_error_precedence() -> None:
+    """Checks the construction error precedence: the focuser's aperture
+    specification checks run before the shared skip validation, so a
+    conflicting aperture specification wins over an also-invalid
+    meters_skip, and the meters_skip check wins over the frame_skip one
+    (the meters branch is evaluated first)."""
+    with pytest.raises(ValueError, match="are mutually"):
+        FocuserParameters(
+            frame_half_aperture=64, coherence_time_s=0.5, meters_skip=-1.0
+        )
+    with pytest.raises(ValueError, match="ERROR: meters_skip must be positive"):
+        SimulatorParameters(meters_skip=-1.0, frame_skip=0)
 
 
 def test_focuser_parameters_defaults() -> None:
