@@ -32,6 +32,7 @@ import numpy as np
 import numpy.typing as npt
 
 from sopa._typing import MessageLogger
+from sopa.exceptions import SopaDataError, SopaFileError, SopaSelectionError
 from sopa.geometry.coordinate_converter import CoordinateConverter
 from sopa.input.data_base import RSData
 from sopa.input.sharad.data.rdr import pds_us_log as log_messages
@@ -74,43 +75,40 @@ class RDR(RSData):
     def _load_from_file(
         self, mode: str = "full", force_reload: bool = False
     ) -> bool:  # filename_base is set, checked by super
-        if self._check_file_presence(mode):
-            load_ok1 = True
-            load_ok2 = True
-            if (mode == "full" or mode == "ancillary") and (
-                (not self._ancillary_already_read) or force_reload
-            ):
-                load_ok1 = self._load_ancillary_data()
-            if (mode == "full" or mode == "data") and (
-                (not self._data_already_read) or force_reload
-            ):
-                load_ok2 = self._load_rdr_data()
-            return load_ok1 and load_ok2
-        return False
+        self._check_file_presence(mode)
+        load_ok1 = True
+        load_ok2 = True
+        if (mode == "full" or mode == "ancillary") and (
+            (not self._ancillary_already_read) or force_reload
+        ):
+            load_ok1 = self._load_ancillary_data()
+        if (mode == "full" or mode == "data") and (
+            (not self._data_already_read) or force_reload
+        ):
+            load_ok2 = self._load_rdr_data()
+        return load_ok1 and load_ok2
 
-    def _check_file_presence(self, mode: str = "full") -> bool:
+    def _check_file_presence(self, mode: str = "full") -> None:
         files_ok1 = True
         files_ok2 = True
         if mode == "full" or mode == "ancillary":
             self._ORBIT_FILENAME = self.filename_base + self._ORBIT_SUFFIX
             files_ok1 = Path(self._ORBIT_FILENAME).is_file()
+            if not files_ok1:
+                raise SopaFileError(log_messages.ERR_MESSAGES["orbit_file_not-found"])
         if (mode == "full" and files_ok1) or mode == "data":
             self._DATA_FILENAME = self.filename_base + self._DATA_SUFFIX
             files_ok2 = Path(self._DATA_FILENAME).is_file()
-        return files_ok1 and files_ok2
+            if not files_ok2:
+                raise SopaFileError(log_messages.ERR_MESSAGES["other_file_not-found"])
 
     def _load_ancillary_data(self) -> bool:
         # orbit data parsing
-        geom_data = self._read_rdr_data_geom_file()
-        if geom_data is None:
-            self.logger.log_messages(log_messages.ERR_MESSAGES["orbit_file_generic"])
-            return False
-        else:
-            self._geom_data = geom_data
+        self._geom_data = self._read_rdr_data_geom_file()
         self._ancillary_already_read = True
         return True
 
-    def _read_rdr_data_geom_file(self) -> npt.NDArray[np.void] | None:
+    def _read_rdr_data_geom_file(self) -> npt.NDArray[np.void]:
         def parsetime(v: str) -> np.datetime64:
             """Converts a text timestamp to numpy.datetime64."""
             return np.datetime64(v)
@@ -153,13 +151,12 @@ class RDR(RSData):
                 )
                 self.n_frames = geom_data.shape[0]
                 return geom_data
-        except OSError:
-            self.logger.log_messages(log_messages.ERR_MESSAGES["orbit_file_read"])
-        except UnicodeDecodeError:
-            self.logger.log_messages(log_messages.ERR_MESSAGES["orbit_file_decode"])
-        return None
+        except OSError as err:
+            raise SopaFileError(log_messages.ERR_MESSAGES["orbit_file_read"]) from err
+        except UnicodeDecodeError as err:
+            raise SopaDataError(log_messages.ERR_MESSAGES["orbit_file_decode"]) from err
 
-    def _load_rdr_data(self, start_frame: int = 0, end_frame: int = -1) -> bool | None:
+    def _load_rdr_data(self, start_frame: int = 0, end_frame: int = -1) -> bool:
         """
         Read PDS US RDR data (filenames in the form s_xxxxxxxx_rgram.img) into
         self._data as a (frames, samples) float64 matrix. The .img file is
@@ -177,12 +174,12 @@ class RDR(RSData):
         - end_frame == -1 means "all the frames starting from start_frame"
         - if end_frame is greater than the available number of frames, only the
             available data are returned without any error or warning
-        - if an error occurs, the function returns False
+        - raises SopaSelectionError on invalid frame limits and SopaFileError
+            when the data file cannot be read
         """
         N_SAMPLES = 3600  # range samples per frame (SHARAD series convention)
         if start_frame < 0 or (end_frame != -1 and start_frame > end_frame):
-            self.logger.log_messages(log_messages.ERR_MESSAGES["data_frame-limits"])
-            return None
+            raise SopaSelectionError(log_messages.ERR_MESSAGES["data_frame-limits"])
         try:
             with open(self._DATA_FILENAME, "rb") as fp:
                 total_frames = Path(self._DATA_FILENAME).stat().st_size // (
@@ -195,10 +192,8 @@ class RDR(RSData):
                     end_frame = total_frames  # "all the frames from start_frame"
                 self._data = frames_major[start_frame:end_frame].astype("float64")
                 return True
-        except OSError:
-            self.logger.log_messages(log_messages.ERR_MESSAGES["data_read"])
-
-        return False
+        except OSError as err:
+            raise SopaFileError(log_messages.ERR_MESSAGES["data_read"]) from err
 
     def generate_orbit_data(self, skip: int = 1) -> None:
         """
@@ -207,6 +202,7 @@ class RDR(RSData):
         There is no need for interpolation, as geometric data are already matched 1:1 with RDR data.
         The field rxwin_time_s is arbitrarily set to 0, as it is not given in the data.
         Values of X, Y and Z are calculated, as they are not present in the data either.
+        Raises SopaDataError when the ancillary data have not been loaded yet.
         """
         print(
             "WARNING: orbit data obtained from RDR PDS US data may be not sufficiently precise for simulation and/or focusing."
@@ -234,5 +230,4 @@ class RDR(RSData):
             self._correct_lon()
 
         else:
-            print("ERROR: ancillary data not yet loaded.")
-            return None
+            raise SopaDataError("ERROR: ancillary data not yet loaded.")

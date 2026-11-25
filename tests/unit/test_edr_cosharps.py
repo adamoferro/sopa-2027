@@ -35,6 +35,7 @@ from typing import Any
 import numpy as np
 import pytest
 
+from sopa.exceptions import SopaDataError, SopaFileError
 from sopa.input.sharad.data.edr import cosharps_log
 from sopa.input.sharad.data.edr.cosharps import EDR
 from sopa.log.log import logger
@@ -210,38 +211,53 @@ def test_aux_float_not_used_column(tmp_path: Path) -> None:
 
 def test_aux_consistency_failure(tmp_path: Path) -> None:
     """Checks that a frame-count mismatch between header and aux file stops
-    the ancillary load."""
+    the ancillary load with SopaDataError and leaves the orbit data unset."""
     _write_dataset(tmp_path, n_aux_rows=N_FRAMES + 1)
-    d, lg = _make_edr(tmp_path)
-    assert d.load(mode="ancillary") is False
-    assert any("consistency" in m for m in lg.LOG_MESSAGES)
-    assert d.orbit_data is None
+    d, _ = _make_edr(tmp_path)
+    with pytest.raises(SopaDataError) as excinfo:
+        d.load(mode="ancillary")
+    assert (
+        str(excinfo.value)
+        == "ERROR: no consistency between header and aux data (different number of frames is reported)."
+    )
+    with pytest.raises(SopaDataError):
+        d.orbit_data
 
 
 def test_header_constraint_failure(tmp_path: Path) -> None:
     """Checks that a non-zero Anomalies count discards the dataset."""
     fields = [(f, "1" if f == "Anomalies" else v) for f, v in HEADER_FIELDS]
     _write_dataset(tmp_path, header_fields=fields)
-    d, lg = _make_edr(tmp_path)
-    assert d.load(mode="full") is False
-    assert any("discarded" in m and "Anomalies" in m for m in lg.LOG_MESSAGES)
+    d, _ = _make_edr(tmp_path)
+    with pytest.raises(SopaDataError) as excinfo:
+        d.load(mode="full")
+    assert (
+        str(excinfo.value) == "--> discarded, header field not compliant: Anomalies = 1"
+    )
 
 
 def test_header_wrong_compression_rejected(tmp_path: Path) -> None:
     """Checks that a non-static compression flag discards the dataset."""
     fields = [(f, "Dynamic" if f == "Compression" else v) for f, v in HEADER_FIELDS]
     _write_dataset(tmp_path, header_fields=fields)
-    d, lg = _make_edr(tmp_path)
-    assert d.load(mode="full") is False
-    assert any("discarded" in m and "Compression" in m for m in lg.LOG_MESSAGES)
+    d, _ = _make_edr(tmp_path)
+    with pytest.raises(SopaDataError) as excinfo:
+        d.load(mode="full")
+    assert (
+        str(excinfo.value)
+        == "--> discarded, header field not compliant: Compression = Dynamic"
+    )
 
 
 def test_missing_files_rejected(tmp_path: Path) -> None:
-    """Checks that a base filename with no files behind it reports the error
-    and returns False."""
-    d, lg = _make_edr(tmp_path)
-    assert d.load(mode="full") is False
-    assert any("not present" in m for m in lg.LOG_MESSAGES)
+    """Checks that a base filename with no files behind it raises
+    SopaFileError."""
+    d, _ = _make_edr(tmp_path)
+    with pytest.raises(SopaFileError) as excinfo:
+        d.load(mode="full")
+    assert (
+        str(excinfo.value) == "ERROR: header and/or aux and/or data file not present."
+    )
 
 
 def test_hk_data_parsing(tmp_path: Path) -> None:

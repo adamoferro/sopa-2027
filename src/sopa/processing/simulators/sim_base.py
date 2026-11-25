@@ -43,6 +43,7 @@ from sopa._typing import (
     OrbitData,
     SimulationParameters,
 )
+from sopa.exceptions import SopaSelectionError
 from sopa.geometry.coordinate_converter import CoordinateConverter as cc
 from sopa.processing.focusers.sofa import (
     _available_memory_bytes,
@@ -50,6 +51,15 @@ from sopa.processing.focusers.sofa import (
     _pool_worker_initializer,
 )
 from sopa.processing.utils import ProcessingUtils
+
+# Minimum frame-selection length the simulators accept: the frame-before /
+# frame-after look-direction reconstruction converts the selection minus the
+# engines' `n_frames_offset_for_dir_estimation` (1 in both sfRSsim and
+# dRSsim) frames on each side and indexes the first/last element of the
+# results, so it needs offset + 1 frames. If an engine ever raises its
+# offset, bump this constant to the new offset + 1 in the same change
+# (cross-module consumers import it instead of hard-coding the threshold).
+MINIMUM_SIMULATION_SELECTION_FRAMES: int = 2
 
 # Fork-inherited simulation data handed to the pool workers: the simulation
 # callback, the per-frame orbit position vectors, the sample count, the local
@@ -277,27 +287,25 @@ class _SIMBase:
 
     def _pre_simulate(
         self, orbit_data: OrbitData
-    ) -> (
-        tuple[
-            int,
-            npt.NDArray[np.float64],
-            npt.NDArray[np.float64],
-            npt.NDArray[np.float64],
-            npt.NDArray[np.float64],
-            npt.NDArray[np.float64],
-            npt.NDArray[np.float64],
-            npt.NDArray[np.float64],
-            float,
-            float,
-        ]
-        | None
-    ):
-        """Validates the frame range, selects the frames to simulate, prepares the aligned track vectors and receive-window reference, and allocates the output images; returns None on invalid ranges and when the computed frame selection is empty."""
+    ) -> tuple[
+        int,
+        npt.NDArray[np.float64],
+        npt.NDArray[np.float64],
+        npt.NDArray[np.float64],
+        npt.NDArray[np.float64],
+        npt.NDArray[np.float64],
+        npt.NDArray[np.float64],
+        npt.NDArray[np.float64],
+        float,
+        float,
+    ]:
+        """Validates the frame range, selects the frames to simulate, prepares the aligned track vectors and receive-window reference, and allocates the output images; raises `SopaSelectionError` on invalid ranges, when the computed frame selection is empty, and when it is shorter than the `n_frames_offset_for_dir_estimation` + 1 frames the look-direction reconstruction needs."""
         n_input_frames = orbit_data["X"].shape[0]
 
         if self._frames_to_be_simulated_end >= n_input_frames:
-            print("ERROR: last frame to be simulated after the end of the input data.")
-            return None
+            raise SopaSelectionError(
+                "ERROR: last frame to be simulated after the end of the input data."
+            )
 
         if self.USE_DATA_DT:
             if "dt" in orbit_data:
@@ -319,10 +327,9 @@ class _SIMBase:
             )
 
         if self._frames_to_be_simulated_end < self._frames_to_be_simulated_start:
-            print(
+            raise SopaSelectionError(
                 "ERROR: last frame to be simulated before first frame to be simulated."
             )
-            return None
 
         # calculation of range of frames to be simulated
         if self._skip_frames != 0:
@@ -346,8 +353,23 @@ class _SIMBase:
             frames_to_be_simulated += self._frames_to_be_simulated_start
 
         if len(frames_to_be_simulated) == 0:
-            print("ERROR: no frame to be simulated in the selected range.")
-            return None
+            raise SopaSelectionError(
+                "ERROR: no frame to be simulated in the selected range."
+            )
+
+        if len(frames_to_be_simulated) <= self.n_frames_offset_for_dir_estimation:
+            # The look-direction reconstruction in simulate() converts the
+            # selection minus the offset frames on both sides and indexes the
+            # first/last element of the results, so it needs offset + 1 frames
+            # (the module-level MINIMUM_SIMULATION_SELECTION_FRAMES documents
+            # this requirement for cross-module consumers).
+            n_offset_frames = self.n_frames_offset_for_dir_estimation
+            history_plural = "s" if n_offset_frames > 1 else ""
+            raise SopaSelectionError(
+                f"ERROR: a frame selection shorter than {n_offset_frames + 1} "
+                f"frames cannot be simulated (the look-direction reconstruction "
+                f"needs {n_offset_frames} frame{history_plural} of history)."
+            )
 
         # correction of the last frame to be simulated
         self._frames_to_be_simulated_end = frames_to_be_simulated[-1]
@@ -489,25 +511,21 @@ class _SIMBase:
         orbit_data: OrbitData,
         sim_callback: FrameSimulationCallback,
         further_pars: list[float] = [],
-    ) -> FrameSimulationResult | None:
-        """Runs the simulation over the selected frames through `sim_callback` and returns the simulated image, its uncertainty mask, the first-return lat/lon, the ground-distance min/max images and the ROI positions; returns None on input errors. With n_processes above 1 the per-frame-range simulation is dispatched to a fork-based process pool (worker count capped by the CPU count and the memory-based worker budget) and the outputs are assembled in frame order, which leaves them independent of the worker count; the frame ranges are derived per requested process, so a smaller effective worker count only queues more ranges."""
+    ) -> FrameSimulationResult:
+        """Runs the simulation over the selected frames through `sim_callback` and returns the simulated image, its uncertainty mask, the first-return lat/lon, the ground-distance min/max images and the ROI positions; raises `SopaSelectionError` on invalid ranges, when the computed frame selection is empty, and when it is shorter than the `n_frames_offset_for_dir_estimation` + 1 frames the look-direction reconstruction needs. With n_processes above 1 the per-frame-range simulation is dispatched to a fork-based process pool (worker count capped by the CPU count and the memory-based worker budget) and the outputs are assembled in frame order, which leaves them independent of the worker count; the frame ranges are derived per requested process, so a smaller effective worker count only queues more ranges."""
 
-        pre_simulate_output = self._pre_simulate(orbit_data)
-        if pre_simulate_output is not None:
-            (
-                n_frames_to_be_simulated,
-                input_rxwin_data_t,
-                input_scx_data,
-                input_scy_data,
-                input_scz_data,
-                input_lat_data,
-                input_long_data,
-                input_scr_data,
-                rxwin_ref,
-                input_scr_data_shifts_alignment_t,
-            ) = pre_simulate_output
-        else:
-            return None
+        (
+            n_frames_to_be_simulated,
+            input_rxwin_data_t,
+            input_scx_data,
+            input_scy_data,
+            input_scz_data,
+            input_lat_data,
+            input_long_data,
+            input_scr_data,
+            rxwin_ref,
+            input_scr_data_shifts_alignment_t,
+        ) = self._pre_simulate(orbit_data)
 
         UTMNorthing_g, UTMEasting_g, UTMZone_g, UTMZoneNumber = self.geom_obj.LL_to_UTM(
             input_lat_data, input_long_data

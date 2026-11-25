@@ -35,6 +35,7 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 
+from sopa.exceptions import SopaDataError, SopaFileError, SopaSelectionError
 from sopa.geometry.coordinate_converter import MARS_IAU2000
 from sopa.input.sharad.data.edr import pds_log
 from sopa.input.sharad.data.edr.pds import EDR
@@ -275,14 +276,15 @@ def test_rxwin_time(dataset: tuple[Path, npt.NDArray[np.int64]]) -> None:
 def test_ancillary_only_then_data(
     dataset: tuple[Path, npt.NDArray[np.int64]], capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Checks the staged load: ancillary-only leaves the data unread and the
-    orbit data with zero receive-window times (with a warning); a subsequent
-    data load fills them in."""
+    """Checks the staged load: ancillary-only leaves the data unread (the
+    data property refuses with SopaDataError) and the orbit data with zero
+    receive-window times (with a warning); a subsequent data load fills them
+    in."""
     directory, _ = dataset
     d, _ = _make_edr(directory)
     assert d.load(mode="ancillary") is True
-    assert d.data is None
-    assert "ERROR" in capsys.readouterr().out
+    with pytest.raises(SopaDataError, match="ERROR: data not yet read."):
+        d.data
     d.generate_orbit_data()
     assert "WARNING" in capsys.readouterr().out
     orbit = d.orbit_data
@@ -300,10 +302,12 @@ def test_header_bad_pri_rejected(tmp_path: Path) -> None:
     """Checks that a non-compliant PRI value discards the dataset."""
     _write_label(tmp_path, pri_text="716 <MICROSECOND>")
     _write_ancillary(tmp_path)
-    d, lg = _make_edr(tmp_path)
-    assert d.load(mode="ancillary") is False
-    assert any(
-        "discarded" in m and "PULSE_REPETITION_INTERVAL" in m for m in lg.LOG_MESSAGES
+    d, _ = _make_edr(tmp_path)
+    with pytest.raises(SopaDataError) as excinfo:
+        d.load(mode="ancillary")
+    assert (
+        str(excinfo.value)
+        == "--> discarded, header field not compliant: MRO:PULSE_REPETITION_INTERVAL = 716 <MICROSECOND>"
     )
 
 
@@ -311,41 +315,49 @@ def test_header_bad_quality_id_rejected(tmp_path: Path) -> None:
     """Checks that a non-zero DATA_QUALITY_ID discards the dataset."""
     _write_label(tmp_path, quality_line='DATA_QUALITY_ID                = "1"')
     _write_ancillary(tmp_path)
-    d, lg = _make_edr(tmp_path)
-    assert d.load(mode="ancillary") is False
-    assert any("discarded" in m and "DATA_QUALITY_ID" in m for m in lg.LOG_MESSAGES)
+    d, _ = _make_edr(tmp_path)
+    with pytest.raises(SopaDataError) as excinfo:
+        d.load(mode="ancillary")
+    assert (
+        str(excinfo.value)
+        == '--> discarded, header field not compliant: DATA_QUALITY_ID = "1"'
+    )
 
 
 def test_header_missing_quality_id_rejected(tmp_path: Path) -> None:
     """Checks that a label lacking DATA_QUALITY_ID entirely fails the parse."""
     _write_label(tmp_path, quality_line="")
     _write_ancillary(tmp_path)
-    d, lg = _make_edr(tmp_path)
-    assert d.load(mode="ancillary") is False
-    assert any("header file" in m for m in lg.LOG_MESSAGES)
+    d, _ = _make_edr(tmp_path)
+    with pytest.raises(SopaDataError) as excinfo:
+        d.load(mode="ancillary")
+    assert str(excinfo.value) == "ERROR: problem while parsing header file."
 
 
 def test_header_non_ss_mode_rejected(tmp_path: Path) -> None:
     """Checks that a non-SS instrument mode discards the dataset."""
     _write_label(tmp_path, im_text="LFO")
     _write_ancillary(tmp_path)
-    d, lg = _make_edr(tmp_path)
-    assert d.load(mode="ancillary") is False
-    assert any("not SS" in m for m in lg.LOG_MESSAGES)
+    d, _ = _make_edr(tmp_path)
+    with pytest.raises(SopaDataError) as excinfo:
+        d.load(mode="ancillary")
+    assert str(excinfo.value) == "ERROR: the acquisition mode is not SS."
 
 
 def test_missing_files_rejected(tmp_path: Path) -> None:
-    """Checks that a base filename with no files behind it reports the error
-    and returns False."""
-    d, lg = _make_edr(tmp_path)
-    assert d.load(mode="full") is False
-    assert any("not present" in m for m in lg.LOG_MESSAGES)
+    """Checks that a base filename with no files behind it raises
+    SopaFileError."""
+    d, _ = _make_edr(tmp_path)
+    with pytest.raises(SopaFileError) as excinfo:
+        d.load(mode="full")
+    assert str(excinfo.value) == "ERROR: label and/or aux and/or data file not present."
 
 
 def test_frame_limits_rejected(dataset: tuple[Path, npt.NDArray[np.int64]]) -> None:
-    """Checks that invalid frame limits are reported and return None."""
+    """Checks that invalid frame limits are refused with SopaSelectionError."""
     directory, _ = dataset
-    d, lg = _make_edr(directory)
+    d, _ = _make_edr(directory)
     assert d.load(mode="full") is True
-    assert d._load_raw_data(start_frame=-1) is None
-    assert any("frame" in m for m in lg.LOG_MESSAGES)
+    with pytest.raises(SopaSelectionError) as excinfo:
+        d._load_raw_data(start_frame=-1)
+    assert str(excinfo.value) == "ERROR: start_frame and/or end_frame not valid."

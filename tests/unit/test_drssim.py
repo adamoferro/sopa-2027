@@ -35,6 +35,7 @@ import numpy.typing as npt
 import pytest
 
 from sopa.dem.mola.mola import MOLA128
+from sopa.exceptions import SopaSelectionError
 from sopa.geometry.coordinate_converter import MARS_IAU2000
 from sopa.input.sharad.instrument import SHARAD
 from sopa.processing.parameters import SimulatorParameters
@@ -171,6 +172,31 @@ def test_simulation_with_chirp() -> None:
     assert np.all(np.isfinite(sim_image))
     assert np.all(sim_image >= 0)
     assert np.sum(sim_image) > 0
+
+
+def test_single_frame_selection_refused() -> None:
+    """Checks the look-direction reconstruction refusal on the dRSsim dispatch
+    path: the engine's simulate() delegates to the shared base-class method,
+    so a one-frame selection (shorter than the 2 frames the
+    frame-before/frame-after conversion needs) is refused with
+    SopaSelectionError naming the minimum length, before any simulation work
+    and without allocating the output images."""
+    sim = dRSsim(
+        geom_obj=MARS_IAU2000(),
+        dem_obj=_dem(),
+        param_obj=SimulatorParameters(
+            frame_start=2, frame_end=3, frame_half_aperture=2
+        ),
+        n_processes=1,
+        simulate_chirp=False,
+    )
+    with pytest.raises(SopaSelectionError) as excinfo:
+        sim.simulate(_orbit_data())
+    assert str(excinfo.value) == (
+        "ERROR: a frame selection shorter than 2 frames cannot be simulated"
+        " (the look-direction reconstruction needs 1 frame of history)."
+    )
+    assert not hasattr(sim, "sim_image")
 
 
 def _degenerate_frame_range_call(

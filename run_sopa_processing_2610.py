@@ -122,96 +122,93 @@ def main(argv=None):
     )
     d.load(mode="full")
     d.generate_orbit_data()
-    if d.orbit_data is not None:
-        # plot the track path on the DEM
-        tpod = TrackPlotOnDEM(
-            m,
-            d.orbit_data["Lat"],
-            d.orbit_data["Lon"],
-            title="Spacecraft ground track on DEM (full track)",
-        )
-        tpod.plot()
 
-        # simulate surface clutter radargram
-        # (2026 port: simulate returns one more value, roi_pos, added after the original example was written)
-        (
-            sim_image,
-            uncert_image,
-            first_return_lats,
-            first_return_lons,
-            ground_distance_min_image,
-            ground_distance_max_image,
-            roi_pos,
-        ) = s.simulate(d.orbit_data)
+    # plot the track path on the DEM
+    tpod = TrackPlotOnDEM(
+        m,
+        d.orbit_data["Lat"],
+        d.orbit_data["Lon"],
+        title="Spacecraft ground track on DEM (full track)",
+    )
+    tpod.plot()
 
-        # save results on disk
-        envi.write(EDR_PDS_OUTPUT_SIM_FILENAME_BASE, sim_image)
-        envi.write(EDR_PDS_OUTPUT_SIM_FILENAME_BASE + "_uncert", uncert_image)
+    # simulate surface clutter radargram
+    # (2026 port: simulate returns one more value, roi_pos, added after the original example was written)
+    (
+        sim_image,
+        uncert_image,
+        first_return_lats,
+        first_return_lons,
+        ground_distance_min_image,
+        ground_distance_max_image,
+        roi_pos,
+    ) = s.simulate(d.orbit_data)
 
-        # plot the simulated radargram
-        # only the top part of the simulation is shown (the top point is calculated dinamically)
-        top_point = (
-            np.min(np.argmin(np.isnan(ground_distance_min_image).astype(int), axis=0))
-            - 50
-        )
-        bottom_point = top_point + 1000
-        sp = SimulationPlot(
-            sim_image,
-            top_point=top_point,
-            bottom_point=bottom_point,
-            title="Radargram simulation with sfRSsim\n(square facets and cos^exp function)",
-        )
-        sp.plot()
+    # save results on disk
+    envi.write(EDR_PDS_OUTPUT_SIM_FILENAME_BASE, sim_image)
+    envi.write(EDR_PDS_OUTPUT_SIM_FILENAME_BASE + "_uncert", uncert_image)
 
-        # plot the track path and the location of the first simulated returns on the DEM
-        tfrpod = TrackAndFirstReturnsPlotOnDEM(
-            m,
-            d.orbit_data["Lat"],
-            d.orbit_data["Lon"],
-            first_return_lats,
-            first_return_lons,
-        )
-        tfrpod.plot()
+    # plot the simulated radargram
+    # only the top part of the simulation is shown (the top point is calculated dinamically)
+    top_point = (
+        np.min(np.argmin(np.isnan(ground_distance_min_image).astype(int), axis=0)) - 50
+    )
+    bottom_point = top_point + 1000
+    sp = SimulationPlot(
+        sim_image,
+        top_point=top_point,
+        bottom_point=bottom_point,
+        title="Radargram simulation with sfRSsim\n(square facets and cos^exp function)",
+    )
+    sp.plot()
 
-        # plot the image showing the minimum ground distance from nadir of each simulated range sample
-        gdp = GroundDistancePlot(
-            ground_distance_min_image / 1000.0,
-            top_point=top_point,
-            bottom_point=bottom_point,
-            title="Distance [km] of the closest facet contributing\nto each radargram sample simulation",
-        )
-        gdp.plot()
+    # plot the track path and the location of the first simulated returns on the DEM
+    tfrpod = TrackAndFirstReturnsPlotOnDEM(
+        m,
+        d.orbit_data["Lat"],
+        d.orbit_data["Lon"],
+        first_return_lats,
+        first_return_lons,
+    )
+    tfrpod.plot()
 
-        # get the DEM radius profile related to the spacecraft track, to be used later by the focuser
-        dem_radius_profile = m.get_dem_radius_from_lat_lon(
-            d.orbit_data["Lat"], d.orbit_data["Lon"]
-        )
+    # plot the image showing the minimum ground distance from nadir of each simulated range sample
+    gdp = GroundDistancePlot(
+        ground_distance_min_image / 1000.0,
+        top_point=top_point,
+        bottom_point=bottom_point,
+        title="Distance [km] of the closest facet contributing\nto each radargram sample simulation",
+    )
+    gdp.plot()
 
-        # free the memory occupied by the DEM (not mandatory, but it may be useful if system RAM is limited)
-        del m
+    # get the DEM radius profile related to the spacecraft track, to be used later by the focuser
+    dem_radius_profile = m.get_dem_radius_from_lat_lon(
+        d.orbit_data["Lat"], d.orbit_data["Lon"]
+    )
 
-        if d.data is not None:
-            # create a SOFA instance and focus the input radargram
-            f = SOFA(i, cc, dem_radius_profile, d, pars, n_processes=4, debug_mode=True)
-            focused_rdr = f.focus()
-            if focused_rdr is not None:
-                envi.write(
-                    EDR_PDS_OUTPUT_FOC_FILENAME_BASE
-                    + "_ha-"
-                    + str(pars.frame_half_aperture)
-                    + "_s-"
-                    + str(pars.squint_angle),
-                    focused_rdr,
-                )
+    # free the memory occupied by the DEM (not mandatory, but it may be useful if system RAM is limited)
+    del m
 
-                # plot the focused radargram
-                rp = RadargramPlot(
-                    focused_rdr,
-                    top_point=top_point,
-                    bottom_point=bottom_point,
-                    title="Radargram",
-                )
-                rp.plot()
+    # create a SOFA instance and focus the input radargram
+    f = SOFA(i, cc, dem_radius_profile, d, pars, n_processes=4, debug_mode=True)
+    focused_rdr = f.focus()
+    envi.write(
+        EDR_PDS_OUTPUT_FOC_FILENAME_BASE
+        + "_ha-"
+        + str(pars.frame_half_aperture)
+        + "_s-"
+        + str(pars.squint_angle),
+        focused_rdr,
+    )
+
+    # plot the focused radargram
+    rp = RadargramPlot(
+        focused_rdr,
+        top_point=top_point,
+        bottom_point=bottom_point,
+        title="Radargram",
+    )
+    rp.plot()
 
     # ------ OTHER INPUT EXAMPLES ------
     # NOTES:

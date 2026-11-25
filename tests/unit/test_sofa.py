@@ -41,6 +41,7 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 
+from sopa.exceptions import SopaSelectionError
 from sopa.geometry.coordinate_converter import MARS_IAU2000
 from sopa.input.data_base import RSData
 from sopa.input.sharad.instrument import SHARAD
@@ -371,9 +372,7 @@ def test_constructor_n_processes_clamping(
         assert capsys.readouterr().out == ""
 
 
-def test_focus_rejects_end_after_data(
-    stub_data: _StubRawData, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_focus_rejects_end_after_data(stub_data: _StubRawData) -> None:
     """Checks that an end frame at or after the input length stops the focus
     before any processing."""
     pars = FocuserParameters(
@@ -386,13 +385,15 @@ def test_focus_rejects_end_after_data(
         stub_data,
         pars,
     )
-    assert f.focus() is None
-    assert "ERROR" in capsys.readouterr().out
+    with pytest.raises(SopaSelectionError) as excinfo:
+        f.focus()
+    assert (
+        str(excinfo.value)
+        == "ERROR: last frame to be focused after the end of the input data."
+    )
 
 
-def test_focus_rejects_empty_range(
-    stub_data: _StubRawData, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_focus_rejects_empty_range(stub_data: _StubRawData) -> None:
     """Checks that a frame range ending before its (clamped) start stops the
     focus before any processing."""
     pars = FocuserParameters(
@@ -405,12 +406,16 @@ def test_focus_rejects_empty_range(
         stub_data,
         pars,
     )
-    assert f.focus() is None
-    assert "ERROR" in capsys.readouterr().out
+    with pytest.raises(SopaSelectionError) as excinfo:
+        f.focus()
+    assert (
+        str(excinfo.value)
+        == "ERROR: last frame to be focused before first frame to be focused."
+    )
 
 
 def test_focus_rejects_empty_selection_frames_equal_pair(
-    stub_data: _StubRawData, capsys: pytest.CaptureFixture[str]
+    stub_data: _StubRawData,
 ) -> None:
     """Checks that a frames-mode selection that comes out empty stops the
     focus with the refusal instead of crashing: frame_end equal to the
@@ -426,12 +431,13 @@ def test_focus_rejects_empty_selection_frames_equal_pair(
         stub_data,
         pars,
     )
-    assert f.focus() is None
-    assert "ERROR" in capsys.readouterr().out
+    with pytest.raises(SopaSelectionError) as excinfo:
+        f.focus()
+    assert str(excinfo.value) == "ERROR: no frame to be focused in the selected range."
 
 
 def test_focus_rejects_empty_selection_meters_skip(
-    stub_data: _StubRawData, capsys: pytest.CaptureFixture[str]
+    stub_data: _StubRawData,
 ) -> None:
     """Checks that a meters-mode selection that comes out empty stops the
     focus with the refusal instead of crashing. The real geometry helper
@@ -460,8 +466,9 @@ def test_focus_rejects_empty_selection_meters_skip(
         stub_data,
         pars,
     )
-    assert f.focus() is None
-    assert "ERROR" in capsys.readouterr().out
+    with pytest.raises(SopaSelectionError) as excinfo:
+        f.focus()
+    assert str(excinfo.value) == "ERROR: no frame to be focused in the selected range."
 
 
 def test_focus_meters_skip_tiny_run(stub_data: _StubRawData) -> None:

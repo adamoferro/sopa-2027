@@ -36,6 +36,7 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 
+from sopa.exceptions import SopaSelectionError
 from sopa.geometry.coordinate_converter import MARS_IAU2000, CoordinateConverter
 
 
@@ -144,14 +145,13 @@ def test_to_latlon_area_from_circle_area_equator(cc: MARS_IAU2000) -> None:
     assert lon_w == pytest.approx(-expected)
 
 
-def test_to_latlon_area_from_circle_area_none_over_half_sphere(
+def test_to_latlon_area_from_circle_area_raises_over_half_sphere(
     cc: MARS_IAU2000,
 ) -> None:
-    """Checks that a radius reaching half the sphere returns None."""
-    assert (
+    """Checks that a radius reaching half the sphere is refused with
+    SopaSelectionError (the bounding box is undefined there)."""
+    with pytest.raises(SopaSelectionError):
         cc.to_latlon_area_from_circle_area(0.0, 0.0, cc._MEAN_RADIUS * np.pi / 2.0)
-        is None
-    )
 
 
 def test_to_latlon_area_from_circle_area_pole_clamping(cc: MARS_IAU2000) -> None:

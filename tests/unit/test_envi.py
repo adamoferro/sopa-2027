@@ -32,6 +32,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from sopa.exceptions import SopaDataError, SopaFileError
 from sopa.io_utils import envi
 
 
@@ -144,18 +145,24 @@ def test_int32_roundtrip(tmp_path: Path) -> None:
 
 
 def test_read_missing_header(tmp_path: Path) -> None:
-    """Checks that reading without a .hdr file returns None."""
-    assert envi.read(str(tmp_path / "missing")) is None
+    """Checks that reading without a .hdr file raises SopaFileError naming
+    the missing header file."""
+    base = tmp_path / "missing"
+    with pytest.raises(SopaFileError) as excinfo:
+        envi.read(str(base))
+    assert str(excinfo.value) == f"ERROR: cannot find ENVI header file {base}.hdr"
 
 
 def test_read_incomplete_header(tmp_path: Path) -> None:
-    """Checks that a .hdr without the data-type key makes the read fail
-    gracefully with None (the KeyError fires before the data file is opened,
-    so a present data file isolates the header path)."""
+    """Checks that a .hdr without the data-type key raises SopaDataError
+    carrying the generic cannot-read message (the KeyError fires before the
+    data file is opened, so a present data file isolates the header path)."""
     base = tmp_path / "bad"
     base.write_bytes(b"\x00" * 16)
     (tmp_path / "bad.hdr").write_text("ENVI\nsamples = 2\nlines = 2\n")
-    assert envi.read(str(base)) is None
+    with pytest.raises(SopaDataError) as excinfo:
+        envi.read(str(base))
+    assert str(excinfo.value) == f"ERROR: cannot read ENVI file {base}"
 
 
 def test_read_multiband_bsq_returns_first_band(tmp_path: Path) -> None:

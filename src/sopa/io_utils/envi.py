@@ -37,6 +37,8 @@ from pathlib import Path
 import numpy as np
 import numpy.typing as npt
 
+from sopa.exceptions import SopaDataError, SopaFileError
+
 # numpy dtype name -> ENVI header "data type" code
 # (https://www.l3harrisgeospatial.com/docs/ENVIHeaderFiles.html)
 _NUMPY2ENVI_DATATYPE = {
@@ -69,12 +71,11 @@ _ENVI_DATATYPE2NUMPY = {
 }
 
 
-def read(filename: str) -> npt.NDArray | None:
-    """Reads the first band of an ENVI file into a numpy array, honoring the header's data type, byte order and header offset; returns None on error."""
+def read(filename: str) -> npt.NDArray:
+    """Reads the first band of an ENVI file into a numpy array, honoring the header's data type, byte order and header offset; raises `SopaFileError` when the header file is missing and `SopaDataError` when the header cannot be parsed or the file cannot be read."""
     hdr_filename = filename + ".hdr"
     if not Path(hdr_filename).is_file():
-        print(f"ERROR: cannot find ENVI header file {hdr_filename}")
-        return None
+        raise SopaFileError(f"ERROR: cannot find ENVI header file {hdr_filename}")
     try:
         header = _read_envi_header(hdr_filename)
         samples = int(header["samples"])
@@ -87,10 +88,9 @@ def read(filename: str) -> npt.NDArray | None:
 
         # note: only the first band is read
         if bands > 1 and header.get("interleave", "bsq").lower() != "bsq":
-            print(
+            raise SopaDataError(
                 "ERROR: only BSQ interleave is supported by the internal ENVI reader."
             )
-            return None
         with open(filename, "rb") as fp:
             fp.seek(header_offset)
             np_array = np.fromfile(fp, dtype=dtype, count=samples * lines * bands)
@@ -98,25 +98,21 @@ def read(filename: str) -> npt.NDArray | None:
         if bands > 1:
             np_array = np_array[:lines, :]  # keep only band 1
         return np_array
-    except OSError, KeyError, ValueError:
-        print(f"ERROR: cannot read ENVI file {filename}")
-        return None
+    except SopaDataError:
+        raise  # the unsupported-interleave refusal keeps its own message
+    except (OSError, KeyError, ValueError) as err:
+        raise SopaDataError(f"ERROR: cannot read ENVI file {filename}") from err
 
 
 def write(filename: str, np_array: npt.NDArray, complex_output: bool = False) -> bool:
-    """Writes a numpy array as an ENVI file (little-endian BSQ data plus .hdr); complex input is converted to power (|z|^2, float64) unless `complex_output` is set."""
+    """Writes a numpy array as an ENVI file (little-endian BSQ data plus .hdr); complex input is converted to power (|z|^2, float64) unless `complex_output` is set. Errors from the underlying file writes propagate to the caller."""
     if (
         np_array.dtype.name == "complex64" or np_array.dtype.name == "complex128"
     ) and not complex_output:
         np_array_tmp = np.abs(np_array).astype("float64") ** 2.0
     else:
         np_array_tmp = np_array
-    try:
-        return _write_numpy(filename, np_array_tmp)
-    except BaseException:
-        print("ERROR: problem writing image to disk.")
-        return False
-    return True
+    return _write_numpy(filename, np_array_tmp)
 
 
 def _read_envi_header(hdr_filename: str) -> dict[str, str]:

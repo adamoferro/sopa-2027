@@ -34,6 +34,7 @@ import numpy.typing as npt
 import png
 import pytest
 
+from sopa.exceptions import SopaDataError
 from sopa.io_utils import png as png_io
 
 
@@ -78,11 +79,12 @@ def test_write_complex_converts_to_power(tmp_path: Path) -> None:
 
 
 def test_write_all_zero_image_fails(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
 ) -> None:
     """Checks that an all-zero image cannot be stretched (no noise level can
-    be estimated): the write reports failure before any file is produced."""
+    be estimated): the write raises SopaDataError before any file is
+    produced."""
     out = tmp_path / "zero.png"
-    assert png_io.write(str(out), np.zeros((8, 8))) is False
-    assert "ERROR" in capsys.readouterr().out
+    with pytest.raises(SopaDataError, match="ERROR: cannot determine noise mean"):
+        png_io.write(str(out), np.zeros((8, 8)))
     assert not out.exists()

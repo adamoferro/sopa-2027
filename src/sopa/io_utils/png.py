@@ -33,6 +33,8 @@ import numpy as np
 import numpy.typing as npt
 import png
 
+from sopa.exceptions import SopaDataError
+
 TOP_NOISE_SAMPLES = 100
 
 # in case of real data
@@ -56,8 +58,7 @@ def write(filename: str, np_array: npt.NDArray, sim_data: bool = False) -> bool:
     first_nonzero_values = np.where(mask.any(axis=0), mask.argmax(axis=0), -1)
     cols_not_ok = np.where(first_nonzero_values == -1)[0]
     if len(cols_not_ok) == np_array_tmp.shape[1]:  # if all cols are not ok
-        print("ERROR: cannot determine noise mean")
-        return False
+        raise SopaDataError("ERROR: cannot determine noise mean")
 
     # mask values not considered for noise mean calculation with nans
     noise_array_tmp = np_array_tmp.copy()
@@ -94,11 +95,7 @@ def write(filename: str, np_array: npt.NDArray, sim_data: bool = False) -> bool:
         "uint8"
     )
 
-    try:
-        png.from_array(np_array_tmp.copy(), "L").save(
-            filename
-        )  # .copy() needed to avoid a pypng "bug" with some numpy ndarrays
-    except BaseException:
-        print("ERROR: problem writing image to disk.")
-        return False
+    png.from_array(np_array_tmp.copy(), "L").save(
+        filename
+    )  # .copy() needed to avoid a pypng "bug" with some numpy ndarrays
     return True

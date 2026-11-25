@@ -33,6 +33,7 @@ import numpy.typing as npt
 import scipy.ndimage as snd
 
 from sopa.dem.dem_base import DEMBase
+from sopa.exceptions import SopaDataError, SopaFileError
 from sopa.io_utils import envi
 
 
@@ -80,24 +81,20 @@ class MOLA(DEMBase):
         )
 
     def read(self) -> bool:
-        """Loads the DEM image with the ENVI reader, unless an image was already provided to the constructor or loaded before; returns False when the reader fails (it reports the error and returns None instead of an image)."""
+        """Loads the DEM image with the ENVI reader, unless an image was already provided to the constructor or loaded before; raises `SopaDataError` when the image is already loaded or the header filename is not set, and `SopaFileError` when the ENVI product cannot be read."""
         if self.dem is not None:
-            print(
+            raise SopaDataError(
                 "WARNING: dem has been already loaded or set by init. Not loading again."
             )
         elif self.filename_base != "":
             try:
                 self.dem = envi.read(self.filename_base)
-                if self.dem is None:
-                    print("ERROR: cannot read MOLA128 DEM file.")
-                else:
-                    self._set_info()
-                    return True
-            except OSError:
-                print("ERROR: cannot read MOLA128 DEM file.")
+            except (SopaFileError, OSError) as err:
+                raise SopaFileError("ERROR: cannot read MOLA128 DEM file.") from err
+            self._set_info()
+            return True
         else:
-            print("ERROR: header filename not set.")
-        return False
+            raise SopaDataError("ERROR: header filename not set.")
 
     def reset(self) -> None:
         """Frees the loaded DEM image."""
@@ -106,14 +103,13 @@ class MOLA(DEMBase):
 
     def get_dem_radius_from_lat_lon(
         self, lat: float | npt.NDArray[np.float64], lon: float | npt.NDArray[np.float64]
-    ) -> npt.NDArray[np.int32] | None:
-        """Returns the DEM radius (in m, MOLA offset included) at the requested lat/lon points; points outside the DEM coverage receive the dummy value."""
+    ) -> npt.NDArray[np.int32]:
+        """Returns the DEM radius (in m, MOLA offset included) at the requested lat/lon points; points outside the DEM coverage receive the dummy value. Raises `SopaDataError` when the DEM image is not loaded."""
         if self.dem is not None:
             mola_x, mola_y = self.to_XY_from_LL(lat, lon)
             return self._XY_vectors_to_radius(mola_x, mola_y)
         else:
-            print("ERROR: MOLA DEM not yet loaded.")
-            return None
+            raise SopaDataError("ERROR: MOLA DEM not yet loaded.")
 
     def get_scaled_subdem_from_latlon_limits(
         self,
@@ -122,8 +118,8 @@ class MOLA(DEMBase):
         lon_e: float,
         lon_w: float,
         scale_factor: float = 4,
-    ) -> _MOLAScaledSubdemSampler | None:
-        """Extracts the sub-image covering the given lat/lon limits (snapped to the DEM grid), smooths it and returns a lazy sampler evaluating the sub-image upscaled by `scale_factor` through the same spline interpolation as the previously materialized `scipy.ndimage.zoom` image, bit-identical over the same geographic limits; used by the simulators to sample facet geometry on a grid finer than the native DEM."""
+    ) -> _MOLAScaledSubdemSampler:
+        """Extracts the sub-image covering the given lat/lon limits (snapped to the DEM grid), smooths it and returns a lazy sampler evaluating the sub-image upscaled by `scale_factor` through the same spline interpolation as the previously materialized `scipy.ndimage.zoom` image, bit-identical over the same geographic limits; used by the simulators to sample facet geometry on a grid finer than the native DEM. Raises `SopaDataError` when the DEM image is not loaded."""
         if self.dem is not None:
             lat_n_local = np.ceil(lat_n / self.deg_sampling) * self.deg_sampling
             lat_n_local = (
@@ -169,8 +165,7 @@ class MOLA(DEMBase):
             )
 
         else:
-            print("ERROR: MOLA DEM not yet loaded.")
-            return None
+            raise SopaDataError("ERROR: MOLA DEM not yet loaded.")
 
     def to_XY_from_LL(
         self,

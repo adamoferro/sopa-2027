@@ -33,6 +33,7 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 
+from sopa.exceptions import SopaDataError, SopaFileError
 from sopa.input.sharad.data.rdr import pds_log
 from sopa.input.sharad.data.rdr.pds import RDR
 from sopa.log.log import logger
@@ -256,24 +257,28 @@ def test_generate_orbit_data(tmp_path: Path) -> None:
 def test_header_bad_pri_rejected(tmp_path: Path) -> None:
     """Checks that a non-compliant PRI value discards the dataset."""
     _write_dataset(tmp_path, pri_text="716 <MICROSECOND>")
-    d, lg = _make_rdr(tmp_path)
-    assert d.load() is False
-    assert any(
-        "discarded" in m and "PULSE_REPETITION_INTERVAL" in m for m in lg.LOG_MESSAGES
+    d, _ = _make_rdr(tmp_path)
+    with pytest.raises(SopaDataError) as excinfo:
+        d.load()
+    assert (
+        str(excinfo.value)
+        == "--> discarded, header field not compliant: MRO:PULSE_REPETITION_INTERVAL = 716 <MICROSECOND>"
     )
 
 
 def test_header_missing_quality_id_rejected(tmp_path: Path) -> None:
     """Checks that a label lacking DATA_QUALITY_ID entirely fails the parse."""
     _write_dataset(tmp_path, quality_line="")
-    d, lg = _make_rdr(tmp_path)
-    assert d.load() is False
-    assert any("header file" in m for m in lg.LOG_MESSAGES)
+    d, _ = _make_rdr(tmp_path)
+    with pytest.raises(SopaDataError) as excinfo:
+        d.load()
+    assert str(excinfo.value) == "ERROR: problem while parsing header file."
 
 
 def test_missing_files_rejected(tmp_path: Path) -> None:
-    """Checks that a base filename with no files behind it reports the error
-    and returns False."""
-    d, lg = _make_rdr(tmp_path)
-    assert d.load() is False
-    assert any("not present" in m for m in lg.LOG_MESSAGES)
+    """Checks that a base filename with no files behind it raises
+    SopaFileError."""
+    d, _ = _make_rdr(tmp_path)
+    with pytest.raises(SopaFileError) as excinfo:
+        d.load()
+    assert str(excinfo.value) == "ERROR: label and/or aux and/or data file not present."

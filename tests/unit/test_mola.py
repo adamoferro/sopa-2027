@@ -40,6 +40,7 @@ import scipy.ndimage as snd
 
 from sopa.dem.dem_base import DEMBase
 from sopa.dem.mola.mola import MOLA, MOLA128
+from sopa.exceptions import SopaDataError, SopaFileError
 from sopa.io_utils import envi
 
 DEM_ROWS = 256
@@ -116,36 +117,42 @@ def test_read_from_envi(dem: tuple[MOLA128, npt.NDArray[np.int16]]) -> None:
     assert m._MOLA_MAX_LONG == pytest.approx(DEM_COLS / 128.0)
 
 
-def test_read_twice_warns_and_skips(
-    dem_file: tuple[Path, npt.NDArray[np.int16]], capsys: pytest.CaptureFixture[str]
+def test_read_twice_refuses(
+    dem_file: tuple[Path, npt.NDArray[np.int16]],
 ) -> None:
-    """Checks that a second read is refused with a warning and returns False."""
+    """Checks that a second read is refused with SopaDataError carrying the
+    historical warning text (message kept verbatim, prefix included)."""
     base, _ = dem_file
     m = MOLA128(filename_base=str(base))
     assert m.read() is True
-    capsys.readouterr()
-    assert m.read() is False
-    assert "WARNING" in capsys.readouterr().out
+    with pytest.raises(SopaDataError) as excinfo:
+        m.read()
+    assert (
+        str(excinfo.value)
+        == "WARNING: dem has been already loaded or set by init. Not loading again."
+    )
 
 
-def test_read_without_filename(capsys: pytest.CaptureFixture[str]) -> None:
-    """Checks that read without a base filename reports an error and returns False."""
+def test_read_without_filename() -> None:
+    """Checks that read without a base filename raises SopaDataError."""
     m = MOLA128()
-    assert m.read() is False
-    assert "ERROR" in capsys.readouterr().out
+    with pytest.raises(SopaDataError) as excinfo:
+        m.read()
+    assert str(excinfo.value) == "ERROR: header filename not set."
 
 
-def test_read_missing_file_reports_error(
-    dem_file: tuple[Path, npt.NDArray[np.int16]], capsys: pytest.CaptureFixture[str]
+def test_read_missing_file_raises_file_error(
+    dem_file: tuple[Path, npt.NDArray[np.int16]],
 ) -> None:
-    """Checks the missing-file contract of read(): the ENVI reader reports
-    the error itself and returns None, the reader's error message is printed
-    and False is returned instead of failing on the None image."""
+    """Checks the missing-file contract of read(): the ENVI reader's
+    SopaFileError is wrapped and re-raised with the reader's own message,
+    and the DEM image stays unset."""
     base, _ = dem_file
     m = MOLA128(filename_base=str(base) + "_missing")
-    assert m.read() is False
+    with pytest.raises(SopaFileError) as excinfo:
+        m.read()
+    assert str(excinfo.value) == "ERROR: cannot read MOLA128 DEM file."
     assert m.dem is None
-    assert "ERROR" in capsys.readouterr().out
 
 
 def test_constructor_image_is_copied() -> None:
@@ -304,24 +311,23 @@ def test_xy_ranges_to_radius(dem: tuple[MOLA128, npt.NDArray[np.int16]]) -> None
     assert np.array_equal(sub_raw, values[0:4, 0:4].astype("int32"))
 
 
-def test_radius_lookup_before_load(capsys: pytest.CaptureFixture[str]) -> None:
-    """Checks that a radius lookup on a not-loaded DEM reports an error and
-    returns None."""
+def test_radius_lookup_before_load() -> None:
+    """Checks that a radius lookup on a not-loaded DEM raises SopaDataError."""
     m = MOLA128()
-    assert m.get_dem_radius_from_lat_lon(0.0, 0.0) is None
-    assert "ERROR" in capsys.readouterr().out
+    with pytest.raises(SopaDataError) as excinfo:
+        m.get_dem_radius_from_lat_lon(0.0, 0.0)
+    assert str(excinfo.value) == "ERROR: MOLA DEM not yet loaded."
 
 
-def test_reset(
-    dem: tuple[MOLA128, npt.NDArray[np.int16]], capsys: pytest.CaptureFixture[str]
-) -> None:
-    """Checks that reset frees the DEM image and later lookups report the
-    not-loaded state."""
+def test_reset(dem: tuple[MOLA128, npt.NDArray[np.int16]]) -> None:
+    """Checks that reset frees the DEM image and later lookups raise the
+    not-loaded refusal."""
     m, _ = dem
     m.reset()
     assert m.dem is None
-    assert m.get_dem_radius_from_lat_lon(88.0, 0.0) is None
-    assert "ERROR" in capsys.readouterr().out
+    with pytest.raises(SopaDataError) as excinfo:
+        m.get_dem_radius_from_lat_lon(88.0, 0.0)
+    assert str(excinfo.value) == "ERROR: MOLA DEM not yet loaded."
 
 
 def test_scaled_subdem(dem: tuple[MOLA128, npt.NDArray[np.int16]]) -> None:

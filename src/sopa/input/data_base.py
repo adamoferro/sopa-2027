@@ -31,6 +31,7 @@ handling and read-only access to the echo matrix.
 import gzip
 
 from sopa._typing import EchoMatrix, MessageLogger, OrbitData
+from sopa.exceptions import SopaDataError
 from sopa.log.log import fake_logger
 
 
@@ -85,32 +86,30 @@ class RSData:
             )
 
     @property
-    def data(self) -> EchoMatrix | None:
-        """Echo matrix (read-only); accessing it before loading prints an error and returns None."""
+    def data(self) -> EchoMatrix:
+        """Echo matrix (read-only); accessing it before loading raises `SopaDataError`."""
         if self._data is None:
-            print("ERROR: data not yet read.")
-            return None
+            raise SopaDataError("ERROR: data not yet read.")
         else:
             return self._data
 
     @data.setter
     def data(self, value: EchoMatrix) -> None:
-        """Assignment is refused: it prints an error and leaves the stored echo matrix unchanged, without inspecting or validating the assigned value."""
-        print("ERROR: cannot set data manually.")
+        """Assignment is refused: it raises `AttributeError` and leaves the stored echo matrix unchanged, without inspecting or validating the assigned value."""
+        raise AttributeError("ERROR: cannot set data manually.")
 
     @property
-    def orbit_data(self) -> OrbitData | None:
-        """Orbit-data dictionary (read-only); accessing it before generation prints an error and returns None."""
+    def orbit_data(self) -> OrbitData:
+        """Orbit-data dictionary (read-only); accessing it before generation raises `SopaDataError`."""
         if self._orbit_data is None:
-            print("ERROR: orbit data not yet generated.")
-            return None
+            raise SopaDataError("ERROR: orbit data not yet generated.")
         else:
             return self._orbit_data
 
     @orbit_data.setter
     def orbit_data(self, value: OrbitData) -> None:
-        """Assignment is refused: it prints an error and leaves the stored orbit-data dictionary unchanged, without inspecting or validating the assigned value."""
-        print("ERROR: cannot set orbit data manually.")
+        """Assignment is refused: it raises `AttributeError` and leaves the stored orbit-data dictionary unchanged, without inspecting or validating the assigned value."""
+        raise AttributeError("ERROR: cannot set orbit data manually.")
 
     def __str__(self) -> str:
         output_str = f"{self.dataset_name}, n_frames={self.n_frames}, PRI={self.pri * 1e6:.1f} us, presum={self.presumming}"
@@ -123,12 +122,11 @@ class RSData:
     ) -> (
         bool | None
     ):  # mode can be: "all", "ancillary", "data". Not all implementation may be able to provide different behaviors
-        """Loads the dataset identified by `filename_base`, either completely (mode="full") or limiting the work to the ancillary data or to the echo data; with `force_reload` the already-read parts are read again."""
+        """Loads the dataset identified by `filename_base`, either completely (mode="full") or limiting the work to the ancillary data or to the echo data; with `force_reload` the already-read parts are read again. Raises `SopaDataError` when the base filename is not set."""
         if self.filename_base != "":
             return self._load_from_file(mode, force_reload)
         else:
-            print("ERROR: dataset base filename not set.")
-            return False
+            raise SopaDataError("ERROR: dataset base filename not set.")
 
     def set_orbit_data_from_ext(self, ext_orbit_data: OrbitData) -> None:
         """Installs externally produced orbit data, bypassing `generate_orbit_data`."""

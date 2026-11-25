@@ -49,6 +49,7 @@ from sopa._typing import (
     Instrument,
     RawDataset,
 )
+from sopa.exceptions import SopaSelectionError
 from sopa.processing.parameters import half_aperture_frames_from_coherence_time
 from sopa.processing.utils import ProcessingUtils
 
@@ -355,8 +356,8 @@ class SOFA:
 
     def focus(
         self, *, progress_callback: Callable[[float, str], None] | None = None
-    ) -> npt.NDArray[np.float64] | None:
-        """Focuses the selected frames and returns the output image (one column per focused frame); validates the frame range against the input data and computes the actual frame selection (skip in frames or meters, aperture extent and squint offset), returning None on invalid ranges and when the computed frame selection is empty. With n_processes above 1 the per-block focus is dispatched to a fork-based process pool (worker count capped by the CPU count and the memory-based worker budget) and the output is assembled in block order, which leaves it independent of the worker count; the block size is derived per requested process, so a smaller effective worker count only queues more blocks.
+    ) -> npt.NDArray[np.float64]:
+        """Focuses the selected frames and returns the output image (one column per focused frame); validates the frame range against the input data and computes the actual frame selection (skip in frames or meters, aperture extent and squint offset), raising `SopaSelectionError` on invalid ranges and when the computed frame selection is empty. With n_processes above 1 the per-block focus is dispatched to a fork-based process pool (worker count capped by the CPU count and the memory-based worker budget) and the output is assembled in block order, which leaves it independent of the worker count; the block size is derived per requested process, so a smaller effective worker count only queues more blocks.
 
         The optional keyword-only progress_callback (a callable taking a
         fraction in [0, 1] and a short note string; when omitted, the
@@ -368,18 +369,19 @@ class SOFA:
         last block. The fractions are monotonically non-decreasing; the
         callback is invoked only in the parent process — the pool workers
         never call it, and it is never passed across the fork boundary. When
-        focus() returns None on an invalid frame range the callback is not
-        called. Exceptions raised by the callback propagate to the caller and
-        abort the focus run. The callback is call-only: it never influences
-        the numerical processing, and without one (the default) the code path
-        is byte-identical to the previous behavior.
+        focus() refuses an invalid frame range by raising `SopaSelectionError`
+        the callback is not called. Exceptions raised by the callback propagate
+        to the caller and abort the focus run. The callback is call-only: it
+        never influences the numerical processing, and without one (the
+        default) the code path is byte-identical to the previous behavior.
         """
         if progress_callback is None:
             progress_callback = self.progress_callback
 
         if self._frames_to_be_focused_end >= self._n_input_frames:
-            print("ERROR: last frame to be focused after the end of the input data.")
-            return None
+            raise SopaSelectionError(
+                "ERROR: last frame to be focused after the end of the input data."
+            )
 
         # Estimation of average number of frames corresponding to the defined squint offset
         input_sc_alt = self.data_obj.orbit_data["Radius"] - self._dem_radius_profile
@@ -409,8 +411,9 @@ class SOFA:
             )
 
         if self._frames_to_be_focused_end < self._frames_to_be_focused_start:
-            print("ERROR: last frame to be focused before first frame to be focused.")
-            return None
+            raise SopaSelectionError(
+                "ERROR: last frame to be focused before first frame to be focused."
+            )
 
         if self._debug_mode:
             print("SC mean altitude =", mean_altitude)
@@ -441,8 +444,9 @@ class SOFA:
             frames_to_be_focused += self._frames_to_be_focused_start
 
         if len(frames_to_be_focused) == 0:
-            print("ERROR: no frame to be focused in the selected range.")
-            return None
+            raise SopaSelectionError(
+                "ERROR: no frame to be focused in the selected range."
+            )
 
         # correction of the last frame to be focused
         self._frames_to_be_focused_end = frames_to_be_focused[-1]
@@ -491,16 +495,14 @@ class SOFA:
             print("frames_to_be_processed_end =", frames_to_be_processed_end)
 
         if frames_to_be_processed_start < 0:
-            print(
+            raise SopaSelectionError(
                 "ERROR: first frame to be processed is before the beginning of input raw data."
             )
-            return None
 
         if frames_to_be_processed_end >= self._n_input_frames:
-            print(
+            raise SopaSelectionError(
                 "ERROR: the last frame to be processed is after the end of input raw data."
             )
-            return None
 
         # calculation of ids of frames to be focused wrt frames_to_be_processed
         frames_to_be_focused_within_frames_to_be_processed = (

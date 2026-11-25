@@ -33,6 +33,7 @@ import gzip
 import numpy as np
 import pytest
 
+from sopa.exceptions import SopaDataError
 from sopa.input.data_base import RSData
 from sopa.log.log import fake_logger, logger
 
@@ -85,19 +86,22 @@ def test_constructor_logger_injection() -> None:
 
 
 def test_data_property_before_and_after_load() -> None:
-    """Checks the read-only data property: None with an error message before
-    the echo matrix is loaded, the matrix afterwards."""
+    """Checks the read-only data property: a SopaDataError before the echo
+    matrix is loaded, the matrix afterwards."""
     d = _MinimalData()
-    assert d.data is None
+    with pytest.raises(SopaDataError) as excinfo:
+        d.data
+    assert str(excinfo.value) == "ERROR: data not yet read."
     d._data = np.arange(6).reshape(2, 3)
     np.testing.assert_array_equal(d.data, np.arange(6).reshape(2, 3))
 
 
 def test_data_setter_rejected() -> None:
-    """Checks that assigning the data property is refused and leaves the
-    internal matrix untouched."""
+    """Checks that assigning the data property raises AttributeError and
+    leaves the internal matrix untouched."""
     d = _MinimalData()
-    d.data = np.ones((2, 2))  # type: ignore[assignment]
+    with pytest.raises(AttributeError, match="ERROR: cannot set data manually."):
+        d.data = np.ones((2, 2))  # type: ignore[assignment]
     assert d._data is None
 
 
@@ -105,11 +109,14 @@ def test_orbit_data_property_and_external_install() -> None:
     """Checks the read-only orbit_data property and the external orbit-data
     installation bypassing generate_orbit_data."""
     d = _MinimalData()
-    assert d.orbit_data is None
+    with pytest.raises(SopaDataError) as excinfo:
+        d.orbit_data
+    assert str(excinfo.value) == "ERROR: orbit data not yet generated."
     external = {"Lat": np.array([1.0])}
     d.set_orbit_data_from_ext(external)
     assert d.orbit_data is external
-    d.orbit_data = {}  # type: ignore[assignment]
+    with pytest.raises(AttributeError, match="ERROR: cannot set orbit data manually."):
+        d.orbit_data = {}  # type: ignore[assignment]
     assert d.orbit_data is external
 
 
@@ -133,12 +140,13 @@ def test_str_with_and_without_filename() -> None:
     )
 
 
-def test_load_without_filename(capsys: pytest.CaptureFixture[str]) -> None:
-    """Checks that load without a base filename reports an error and returns
-    False without dispatching."""
+def test_load_without_filename() -> None:
+    """Checks that load without a base filename raises SopaDataError without
+    dispatching."""
     d = _MinimalData()
-    assert d.load() is False
-    assert "ERROR" in capsys.readouterr().out
+    with pytest.raises(SopaDataError) as excinfo:
+        d.load()
+    assert str(excinfo.value) == "ERROR: dataset base filename not set."
     assert d.load_called_with is None
 
 

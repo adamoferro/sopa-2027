@@ -36,6 +36,7 @@ import numpy.typing as npt
 import pytest
 
 from sopa.dem.mola.mola import MOLA128
+from sopa.exceptions import SopaSelectionError
 from sopa.plot_utils.tracks import (
     TrackAndFirstReturnsPlotOnDEM,
     TrackAndROIReturnsPlotOnDEM,
@@ -179,13 +180,12 @@ def test_track_and_first_returns_plot(
 def test_roi_plot_without_rois(
     dem: MOLA128,
     track: tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]],
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Checks the ROI plot with an empty ROI set: it reports the missing
-    ROIs and produces no figure."""
+    """Checks the ROI plot with an empty ROI set: it refuses with
+    SopaSelectionError and produces no figure."""
     lats, lons = track
-    TrackAndROIReturnsPlotOnDEM(dem, lats, lons, ({}, {})).plot()
-    assert "ERROR" in capsys.readouterr().out
+    with pytest.raises(SopaSelectionError, match="ERROR: no ROIs to plot."):
+        TrackAndROIReturnsPlotOnDEM(dem, lats, lons, ({}, {})).plot()
     assert len(plt.get_fignums()) == 0
 
 

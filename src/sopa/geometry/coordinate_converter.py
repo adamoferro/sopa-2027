@@ -32,6 +32,8 @@ import math
 import numpy as np
 import numpy.typing as npt
 
+from sopa.exceptions import SopaSelectionError
+
 
 class CoordinateConverter:
     """Conversions parameterized by a reference ellipsoid (equatorial radius, polar radius, mean radius); instances exist for specific bodies (e.g. MARS_IAU2000), while the static and class methods are body-independent."""
@@ -101,8 +103,8 @@ class CoordinateConverter:
 
     def to_latlon_area_from_circle_area(
         self, lat: float, lon: float, radius: float
-    ) -> tuple[float, float, float, float] | None:
-        """Bounding lat/lon box of the circle of the given radius centered at the given lat/lon on the mean-radius sphere; returns None when the radius reaches half the sphere."""
+    ) -> tuple[float, float, float, float]:
+        """Bounding lat/lon box of the circle of the given radius centered at the given lat/lon on the mean-radius sphere; raises `SopaSelectionError` when the radius reaches half the sphere, where the bounding box is undefined."""
         lat_n = 0
         lat_s = 0
         lon_e = 0
@@ -110,7 +112,9 @@ class CoordinateConverter:
         ratio = radius / self._MEAN_RADIUS
 
         if radius / self._MEAN_RADIUS >= np.pi / 2:
-            return None
+            raise SopaSelectionError(
+                "ERROR: the circle radius reaches or exceeds half the mean-radius sphere; the bounding lat/lon area is undefined."
+            )
 
         delta_lat = self._rad2deg * ratio
         lat_s = lat - delta_lat

@@ -33,6 +33,7 @@ import numpy.typing as npt
 from matplotlib import pyplot as pp
 
 from sopa._typing import DEM
+from sopa.exceptions import SopaSelectionError
 
 
 class TrackPlotOnDEM:
@@ -252,10 +253,10 @@ class TrackAndROIReturnsPlotOnDEM(TrackPlotOnDEM):
             self._NO_ROIS = True
 
     def plot(self) -> None:
-        """Draws the DEM portion covering all ROIs, the ground-track points within it, and one scatter plot per ROI: plain points, or alpha-scaled by incidence angle with per-ROI legend patches, or color/alpha-coded by the along-track incidence angle."""
+        """Draws the DEM portion covering all ROIs, the ground-track points within it, and one scatter plot per ROI: plain points, or alpha-scaled by incidence angle with per-ROI legend patches, or color/alpha-coded by the along-track incidence angle. Raises `SopaSelectionError` when the ROI set is empty."""
 
         if self._NO_ROIS:
-            print("ERROR: no ROIs to plot.")
+            raise SopaSelectionError("ERROR: no ROIs to plot.")
         else:
             roi_x = dict()
             roi_y = dict()

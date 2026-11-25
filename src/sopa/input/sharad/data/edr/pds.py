@@ -42,6 +42,7 @@ import numpy as np
 import numpy.typing as npt
 
 from sopa._typing import MessageLogger
+from sopa.exceptions import SopaDataError, SopaFileError, SopaSelectionError
 from sopa.geometry.coordinate_converter import CoordinateConverter
 from sopa.input.data_base import RSData
 from sopa.input.sharad.data.edr import pds_log as log_messages
@@ -175,51 +176,40 @@ class EDR(RSData):
     def _load_from_file(
         self, mode: str = "full", force_reload: bool = False
     ) -> bool:  # filename_base is set, checked by super
-        if self._check_file_presence(mode):
-            load_ok1 = True
-            load_ok2 = True
-            if (mode == "full" or mode == "ancillary") and (
-                (not self._ancillary_already_read) or force_reload
-            ):
-                load_ok1 = self._load_ancillary_data()
-            if (mode == "full" or mode == "data") and (
-                (not self._data_already_read) or force_reload
-            ):
-                load_ok2 = self._load_raw_data()
-            return load_ok1 and load_ok2
-        return False
+        self._check_file_presence(mode)
+        load_ok1 = True
+        load_ok2 = True
+        if (mode == "full" or mode == "ancillary") and (
+            (not self._ancillary_already_read) or force_reload
+        ):
+            load_ok1 = self._load_ancillary_data()
+        if (mode == "full" or mode == "data") and (
+            (not self._data_already_read) or force_reload
+        ):
+            load_ok2 = self._load_raw_data()
+        return load_ok1 and load_ok2
 
-    def _check_file_presence(self, mode: str = "full") -> bool:
+    def _check_file_presence(self, mode: str = "full") -> None:
         self._HEADER_FILENAME = (
             self.filename_base + self._HEADER_SUFFIX
         )  # needed for both ancillary and science data
         if Path(self._HEADER_FILENAME).is_file():
-            files_ok1 = True
-            files_ok2 = True
             if mode == "full" or mode == "ancillary":
-                files_ok1 = self._check_file_presence_ancillary()
-            if (mode == "full" and files_ok1) or mode == "data":
-                files_ok2 = self._check_file_presence_data()
-            return files_ok1 and files_ok2
+                self._check_file_presence_ancillary()
+            if mode == "full" or mode == "data":
+                self._check_file_presence_data()
         else:
-            self.logger.log_messages(log_messages.ERR_MESSAGES["other_file_not-found"])
-        return False
+            raise SopaFileError(log_messages.ERR_MESSAGES["other_file_not-found"])
 
-    def _check_file_presence_ancillary(self) -> bool:
+    def _check_file_presence_ancillary(self) -> None:
         self._AUX_FILENAME = self.filename_base + self._AUX_SUFFIX
-        if Path(self._AUX_FILENAME).is_file():
-            return True
-        else:
-            self.logger.log_messages(log_messages.ERR_MESSAGES["other_file_not-found"])
-        return False
+        if not Path(self._AUX_FILENAME).is_file():
+            raise SopaFileError(log_messages.ERR_MESSAGES["other_file_not-found"])
 
-    def _check_file_presence_data(self) -> bool:
+    def _check_file_presence_data(self) -> None:
         self._DATA_FILENAME = self.filename_base + self._DATA_SUFFIX
-        if Path(self._DATA_FILENAME).is_file():
-            return True
-        else:
-            self.logger.log_messages(log_messages.ERR_MESSAGES["other_file_not-found"])
-        return False
+        if not Path(self._DATA_FILENAME).is_file():
+            raise SopaFileError(log_messages.ERR_MESSAGES["other_file_not-found"])
 
     def _decode_im(self, im: int) -> tuple[int, int, int]:
         """
@@ -236,58 +226,38 @@ class EDR(RSData):
     def _load_ancillary_data(self, only_header: bool = False) -> bool | None:
         if not self._header_already_read:
             # header parsing
-            header_data_grouped = self._read_raw_data_header()
+            header_data, header_error_field = self._read_raw_data_header()
 
-            if header_data_grouped is not None:
-                header_data, header_error_field = header_data_grouped
-
-                if header_error_field != "":
-                    err_msg = f"{log_messages.ERR_MESSAGES['discarded']} {header_error_field} = {header_data[header_error_field]}"
-                    self.logger.log_messages(err_msg)
-                    return False
-                else:
-                    self._header_data = header_data
-                    self.n_frames = self._header_data[self._HEADER_FIELD_N_FRAMES]
-                    self.pri = (
-                        int(self._header_data[self._HEADER_FIELD_PRI].split(" ")[0])
-                        / 1e6
-                    )
-
-                    im = self._header_data[self._HEADER_FIELD_IM]
-                    if im[:2] == "SS":
-                        im = int(im[2:])
-                        (
-                            self.presumming,
-                            self._n_bits_per_byte,
-                            self._n_bytes_per_record,
-                        ) = self._decode_im(im)
-                    else:
-                        self.logger.log_messages(
-                            log_messages.ERR_MESSAGES["header_file_no_ss"]
-                        )
-                        return False
+            if header_error_field != "":
+                err_msg = f"{log_messages.ERR_MESSAGES['discarded']} {header_error_field} = {header_data[header_error_field]}"
+                raise SopaDataError(err_msg)
             else:
-                self.logger.log_messages(
-                    log_messages.ERR_MESSAGES["header_file_generic"]
+                self._header_data = header_data
+                self.n_frames = self._header_data[self._HEADER_FIELD_N_FRAMES]
+                self.pri = (
+                    int(self._header_data[self._HEADER_FIELD_PRI].split(" ")[0]) / 1e6
                 )
-                return False
+
+                im = self._header_data[self._HEADER_FIELD_IM]
+                if im[:2] == "SS":
+                    im = int(im[2:])
+                    (
+                        self.presumming,
+                        self._n_bits_per_byte,
+                        self._n_bytes_per_record,
+                    ) = self._decode_im(im)
+                else:
+                    raise SopaDataError(log_messages.ERR_MESSAGES["header_file_no_ss"])
             self._header_already_read = True
 
         if not only_header:
             # orbit data parsing
-            geom_data = self._read_raw_data_geom_file()
-            if geom_data is None:
-                self.logger.log_messages(
-                    log_messages.ERR_MESSAGES["orbit_file_generic"]
-                )
-                return False
-            else:
-                self._geom_data = geom_data
+            self._geom_data = self._read_raw_data_geom_file()
 
             self._ancillary_already_read = True
             return True
 
-    def _read_raw_data_header(self) -> tuple[dict[str, Any], str] | None:
+    def _read_raw_data_header(self) -> tuple[dict[str, Any], str]:
         try:
             with self.open_function(
                 self._HEADER_FILENAME, mode="rt", encoding=self.encoding
@@ -347,18 +317,19 @@ class EDR(RSData):
                     line = fp.readline()
 
                 if len(header_data) != self._N_FIELDS_TO_SEARCH and error_field == "":
-                    self.logger.log_messages(
+                    raise SopaDataError(
                         log_messages.ERR_MESSAGES["header_file_generic"]
                     )
                 else:
                     return header_data, error_field
-        except OSError:
-            self.logger.log_messages(log_messages.ERR_MESSAGES["header_file_read"])
-        except UnicodeDecodeError:
-            self.logger.log_messages(log_messages.ERR_MESSAGES["header_file_decode"])
-        return None
+        except OSError as err:
+            raise SopaFileError(log_messages.ERR_MESSAGES["header_file_read"]) from err
+        except UnicodeDecodeError as err:
+            raise SopaDataError(
+                log_messages.ERR_MESSAGES["header_file_decode"]
+            ) from err
 
-    def _read_raw_data_geom_file(self) -> npt.NDArray[np.void] | None:
+    def _read_raw_data_geom_file(self) -> npt.NDArray[np.void]:
         dt = np.dtype(
             [
                 ("SCET_BLOCK_WHOLE", ">u4"),
@@ -406,14 +377,13 @@ class EDR(RSData):
                 aux_file = fp.read()
                 geom_data = np.frombuffer(aux_file, dtype=dt, count=self.n_frames)
                 return geom_data
-        except OSError:
-            self.logger.log_messages(log_messages.ERR_MESSAGES["orbit_file_read"])
-        except UnicodeDecodeError:
-            self.logger.log_messages(log_messages.ERR_MESSAGES["orbit_file_decode"])
-        return None
+        except OSError as err:
+            raise SopaFileError(log_messages.ERR_MESSAGES["orbit_file_read"]) from err
+        except UnicodeDecodeError as err:
+            raise SopaDataError(log_messages.ERR_MESSAGES["orbit_file_decode"]) from err
 
-    def _load_raw_data(self, start_frame: int = 0, end_frame: int = -1) -> bool | None:
-        """Reads the science file, unpacks the 4- or 6-bit samples when required (frame by frame, to limit memory use), and applies the static decompression scaling."""
+    def _load_raw_data(self, start_frame: int = 0, end_frame: int = -1) -> bool:
+        """Reads the science file, unpacks the 4- or 6-bit samples when required (frame by frame, to limit memory use), and applies the static decompression scaling; raises `SopaSelectionError` on invalid frame limits and `SopaFileError` when the science file cannot be read."""
 
         if not self._header_already_read:
             self._load_ancillary_data(only_header=True)
@@ -429,8 +399,7 @@ class EDR(RSData):
 
         frame_count = -1
         if start_frame < 0 or (end_frame != -1 and start_frame > end_frame):
-            self.logger.log_messages(log_messages.ERR_MESSAGES["data_frame-limits"])
-            return None
+            raise SopaSelectionError(log_messages.ERR_MESSAGES["data_frame-limits"])
         elif end_frame != -1:
             frame_count = end_frame - start_frame
         try:
@@ -460,15 +429,15 @@ class EDR(RSData):
                 self._rxwin_steps = raw_data_np["RECEIVE_WINDOW_OPENING_TIME"]
                 self._data_already_read = True
                 return True
-        except OSError:
-            self.logger.log_messages(log_messages.ERR_MESSAGES["data_read"])
-        return False
+        except OSError as err:
+            raise SopaFileError(log_messages.ERR_MESSAGES["data_read"]) from err
 
     def generate_orbit_data(self, skip: int = 1) -> None:
         """
         Saves in self._orbit_data the following fields as a dictionary,
         interpolated to match 1:skip the frames of the raw data:
         "time_offset_s", "rxwin_time_s", "Lat", "Lon", "Radius", "Vtang", "Vradial", "X", "Y", "Z", "Roll", "Pitch", "Yaw", "SZA"
+        Raises SopaDataError when the ancillary data have not been loaded yet.
         """
         geom_fields_to_include = (
             "SUB_SC_PLANETOCENTRIC_LATITUDE",
@@ -537,5 +506,4 @@ class EDR(RSData):
             self._correct_lon()
 
         else:
-            print("ERROR: ancillary data not yet loaded.")
-            return None
+            raise SopaDataError("ERROR: ancillary data not yet loaded.")

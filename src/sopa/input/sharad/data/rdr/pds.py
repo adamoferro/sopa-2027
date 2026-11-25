@@ -37,6 +37,7 @@ import numpy as np
 import numpy.typing as npt
 
 from sopa._typing import MessageLogger
+from sopa.exceptions import SopaDataError, SopaFileError, SopaSelectionError
 from sopa.geometry.coordinate_converter import CoordinateConverter
 from sopa.input.data_base import RSData
 from sopa.input.sharad.data.rdr import pds_log as log_messages
@@ -150,28 +151,24 @@ class RDR(RSData):
 
     def _load_from_file(
         self, mode: str | None = None, force_reload: bool = False
-    ) -> bool | None:  # filename_base is set, checked by super
+    ) -> bool:  # filename_base is set, checked by super
         # no "mode", only "data" because everything is contained in one file
-        if self._check_file_presence():
-            if (not self._data_already_read) or force_reload:
-                return self._load_rdr_data()
+        self._check_file_presence()
+        if (not self._data_already_read) or force_reload:
+            return self._load_rdr_data()
         return False
 
-    def _check_file_presence(self) -> bool:
+    def _check_file_presence(self) -> None:
         self._HEADER_FILENAME = self.filename_base + self._HEADER_SUFFIX
         if Path(self._HEADER_FILENAME).is_file():
-            return self._check_file_presence_data()
+            self._check_file_presence_data()
         else:
-            self.logger.log_messages(log_messages.ERR_MESSAGES["other_file_not-found"])
-        return False
+            raise SopaFileError(log_messages.ERR_MESSAGES["other_file_not-found"])
 
-    def _check_file_presence_data(self) -> bool:
+    def _check_file_presence_data(self) -> None:
         self._DATA_FILENAME = self.filename_base + self._DATA_SUFFIX
-        if Path(self._DATA_FILENAME).is_file():
-            return True
-        else:
-            self.logger.log_messages(log_messages.ERR_MESSAGES["other_file_not-found"])
-        return False
+        if not Path(self._DATA_FILENAME).is_file():
+            raise SopaFileError(log_messages.ERR_MESSAGES["other_file_not-found"])
 
     def _decode_im(self, im: int) -> int:
         """Service function that returns the presumming factor of the
@@ -180,7 +177,7 @@ class RDR(RSData):
         mode_index = self._IMS.index(im)
         return self._IM_PRESUMMING[mode_index]
 
-    def _read_rdr_data_header(self) -> tuple[dict[str, Any], str] | None:
+    def _read_rdr_data_header(self) -> tuple[dict[str, Any], str]:
         try:
             with self.open_function(
                 self._HEADER_FILENAME, mode="rt", encoding=self.encoding
@@ -240,16 +237,17 @@ class RDR(RSData):
                     line = fp.readline()
 
                 if len(header_data) != self._N_FIELDS_TO_SEARCH and error_field == "":
-                    self.logger.log_messages(
+                    raise SopaDataError(
                         log_messages.ERR_MESSAGES["header_file_generic"]
                     )
                 else:
                     return header_data, error_field
-        except OSError:
-            self.logger.log_messages(log_messages.ERR_MESSAGES["header_file_read"])
-        except UnicodeDecodeError:
-            self.logger.log_messages(log_messages.ERR_MESSAGES["header_file_decode"])
-        return None
+        except OSError as err:
+            raise SopaFileError(log_messages.ERR_MESSAGES["header_file_read"]) from err
+        except UnicodeDecodeError as err:
+            raise SopaDataError(
+                log_messages.ERR_MESSAGES["header_file_decode"]
+            ) from err
 
     @staticmethod
     def _correct_range_shift(
@@ -271,41 +269,28 @@ class RDR(RSData):
             ] = data[:, i_f]
         return zero_padded_data
 
-    def _load_rdr_data(self, start_frame: int = 0, end_frame: int = -1) -> bool | None:
-        """Reads the fixed-length RDR records, builds the complex echo matrix and aligns the per-frame range shifts (expressed in ADC sampling times) by zero padding."""
+    def _load_rdr_data(self, start_frame: int = 0, end_frame: int = -1) -> bool:
+        """Reads the fixed-length RDR records, builds the complex echo matrix and aligns the per-frame range shifts (expressed in ADC sampling times) by zero padding; raises `SopaDataError` on a non-compliant or unparseable header, `SopaSelectionError` on invalid frame limits and `SopaFileError` when the data file cannot be read."""
         if not self._header_already_read:
             # header parsing
-            header_data_grouped = self._read_rdr_data_header()
+            header_data, header_error_field = self._read_rdr_data_header()
 
-            if header_data_grouped is not None:
-                header_data, header_error_field = header_data_grouped
-
-                if header_error_field != "":
-                    err_msg = f"{log_messages.ERR_MESSAGES['discarded']} {header_error_field} = {header_data[header_error_field]}"
-                    self.logger.log_messages(err_msg)
-                    return False
-                else:
-                    self._header_data = header_data
-                    self.n_frames = self._header_data[self._HEADER_FIELD_N_FRAMES]
-                    self.pri = (
-                        int(self._header_data[self._HEADER_FIELD_PRI].split(" ")[0])
-                        / 1e6
-                    )
-
-                    im = self._header_data[self._HEADER_FIELD_IM]
-                    if im[:2] == "SS":
-                        im = int(im[2:])
-                        self.presumming = self._decode_im(im)
-                    else:
-                        self.logger.log_messages(
-                            log_messages.ERR_MESSAGES["header_file_no_ss"]
-                        )
-                        return False
+            if header_error_field != "":
+                err_msg = f"{log_messages.ERR_MESSAGES['discarded']} {header_error_field} = {header_data[header_error_field]}"
+                raise SopaDataError(err_msg)
             else:
-                self.logger.log_messages(
-                    log_messages.ERR_MESSAGES["header_file_generic"]
+                self._header_data = header_data
+                self.n_frames = self._header_data[self._HEADER_FIELD_N_FRAMES]
+                self.pri = (
+                    int(self._header_data[self._HEADER_FIELD_PRI].split(" ")[0]) / 1e6
                 )
-                return False
+
+                im = self._header_data[self._HEADER_FIELD_IM]
+                if im[:2] == "SS":
+                    im = int(im[2:])
+                    self.presumming = self._decode_im(im)
+                else:
+                    raise SopaDataError(log_messages.ERR_MESSAGES["header_file_no_ss"])
             self._header_already_read = True
 
         dt = np.dtype(
@@ -359,8 +344,7 @@ class RDR(RSData):
 
         frame_count = -1
         if start_frame < 0 or (end_frame != -1 and start_frame > end_frame):
-            self.logger.log_messages(log_messages.ERR_MESSAGES["data_frame-limits"])
-            return None
+            raise SopaSelectionError(log_messages.ERR_MESSAGES["data_frame-limits"])
         elif end_frame != -1:
             frame_count = end_frame - start_frame
         try:
@@ -379,15 +363,15 @@ class RDR(RSData):
                 )
                 self._data_already_read = True
                 return True
-        except OSError:
-            self.logger.log_messages(log_messages.ERR_MESSAGES["data_read"])
-        return False
+        except OSError as err:
+            raise SopaFileError(log_messages.ERR_MESSAGES["data_read"]) from err
 
     def generate_orbit_data(self, skip: int = 1) -> None:
         """
         Saves in self._orbit_data the following fields as a dictionary,
         interpolated to match 1:skip the frames of the raw data:
         "time_offset_s", "rxwin_time_s", "Lat", "Lon", "Radius", "Vtang", "Vradial", "X", "Y", "Z", "Roll", "Pitch", "Yaw", "SZA"
+        Raises SopaDataError when the data have not been loaded yet.
         """
         geom_fields_to_include = (
             "SUB_SC_PLANETOCENTRIC_LATITUDE",
@@ -447,5 +431,4 @@ class RDR(RSData):
             self._correct_lon()
 
         else:
-            print("ERROR: data not yet loaded.")
-            return None
+            raise SopaDataError("ERROR: data not yet loaded.")

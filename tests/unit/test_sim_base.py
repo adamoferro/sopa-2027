@@ -40,11 +40,15 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 
+from sopa.exceptions import SopaSelectionError
 from sopa.geometry.coordinate_converter import MARS_IAU2000
 from sopa.input.sharad.instrument import SHARAD
 from sopa.processing.parameters import SimulatorParameters
 from sopa.processing.simulators import sim_base as sim_base_module
+from sopa.processing.simulators.drssim import dRSsim
+from sopa.processing.simulators.sfrssim import sfRSsim
 from sopa.processing.simulators.sim_base import (
+    MINIMUM_SIMULATION_SELECTION_FRAMES,
     _alt_unit_vector_carry,
     _assemble_range_results,
     _sample_positions_to_int,
@@ -254,8 +258,9 @@ def test_frame_selection_by_frame_skip() -> None:
     assert callback.calls[0]["dt"] == DEFAULT_DT
 
 
-def test_invalid_frame_range_returns_none() -> None:
-    """Checks that an end frame at or after the input length is rejected."""
+def test_invalid_frame_range_rejected() -> None:
+    """Checks that an end frame at or after the input length is rejected with
+    SopaSelectionError and the callback is never invoked."""
     callback = _RecordingCallback()
     sim = _TrivialSim(
         MARS_IAU2000(),
@@ -263,7 +268,13 @@ def test_invalid_frame_range_returns_none() -> None:
         SimulatorParameters(frame_start=2, frame_end=N_FRAMES, frame_half_aperture=2),
         callback,
     )
-    assert sim.simulate(_orbit_data()) is None
+    with pytest.raises(SopaSelectionError) as excinfo:
+        sim.simulate(_orbit_data())
+    assert (
+        str(excinfo.value)
+        == "ERROR: last frame to be simulated after the end of the input data."
+    )
+    assert callback.calls == []
 
 
 def test_output_sizing_with_rxwin_set() -> None:
@@ -315,12 +326,10 @@ def test_frame_selection_by_meters_skip() -> None:
     assert callback.calls[0]["n_frames"] == n_simulated
 
 
-def test_empty_selection_frames_equal_pair_refused(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
+def test_empty_selection_frames_equal_pair_refused() -> None:
     """Checks the ADR 0040 mirror refusal for the simulators: a frames-mode
     selection that comes out empty stops the simulation with the
-    print-and-None refusal instead of crashing at the first consumption.
+    SopaSelectionError refusal instead of crashing at the first consumption.
     Frame_end equal to the clamped frame start passes the range refusal as
     equality, and the arange over start..end selects no frame."""
     callback = _RecordingCallback()
@@ -330,14 +339,15 @@ def test_empty_selection_frames_equal_pair_refused(
         SimulatorParameters(frame_start=0, frame_end=10, frame_half_aperture=10),
         callback,
     )
-    assert sim.simulate(_orbit_data()) is None
-    assert "ERROR: no frame to be simulated" in capsys.readouterr().out
+    with pytest.raises(SopaSelectionError) as excinfo:
+        sim.simulate(_orbit_data())
+    assert (
+        str(excinfo.value) == "ERROR: no frame to be simulated in the selected range."
+    )
     assert callback.calls == []
 
 
-def test_empty_selection_negative_skip_refused(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
+def test_empty_selection_negative_skip_refused() -> None:
     """Checks the same refusal for a negative frame_skip: a negative step
     over a start-below-stop range yields an empty arange (direction
     mismatch), which used to crash on the first consumption. The parameters
@@ -353,14 +363,15 @@ def test_empty_selection_negative_skip_refused(
         frame_half_aperture=2,
     )
     sim = _TrivialSim(MARS_IAU2000(), _ConstDEM(), pars, callback)
-    assert sim.simulate(_orbit_data()) is None
-    assert "ERROR: no frame to be simulated" in capsys.readouterr().out
+    with pytest.raises(SopaSelectionError) as excinfo:
+        sim.simulate(_orbit_data())
+    assert (
+        str(excinfo.value) == "ERROR: no frame to be simulated in the selected range."
+    )
     assert callback.calls == []
 
 
-def test_empty_selection_meters_skip_refused(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
+def test_empty_selection_meters_skip_refused() -> None:
     """Checks the same refusal in meters mode: the geometry helper is
     stubbed to hand back no frame id (as the real one now can for degenerate
     windows), pinning the refusal contract the simulator must uphold."""
@@ -372,17 +383,62 @@ def test_empty_selection_meters_skip_refused(
         meters_skip=6000.0,
     )
     sim = _TrivialSim(_EmptySelectionGeom(), _ConstDEM(), pars, callback)
-    assert sim.simulate(_orbit_data()) is None
-    assert "ERROR: no frame to be simulated" in capsys.readouterr().out
+    with pytest.raises(SopaSelectionError) as excinfo:
+        sim.simulate(_orbit_data())
+    assert (
+        str(excinfo.value) == "ERROR: no frame to be simulated in the selected range."
+    )
     assert callback.calls == []
+
+
+def test_single_frame_selection_refused() -> None:
+    """Checks the look-direction reconstruction refusal: a one-frame selection
+    (shorter than the n_frames_offset_for_dir_estimation + 1 = 2 frames the
+    frame-before/frame-after conversion in simulate() consumes) stops the
+    simulation with the SopaSelectionError refusal instead of the historical
+    IndexError from indexing into the empty sliced conversion, the callback is
+    never invoked and no output image is allocated."""
+    callback = _RecordingCallback()
+    sim = _TrivialSim(
+        MARS_IAU2000(),
+        _ConstDEM(),
+        SimulatorParameters(frame_start=2, frame_end=3, frame_half_aperture=2),
+        callback,
+    )
+    with pytest.raises(SopaSelectionError) as excinfo:
+        sim.simulate(_orbit_data())
+    assert str(excinfo.value) == (
+        "ERROR: a frame selection shorter than 2 frames cannot be simulated"
+        " (the look-direction reconstruction needs 1 frame of history)."
+    )
+    assert callback.calls == []
+    assert not hasattr(sim, "sim_image")
+
+
+def test_minimum_selection_frames_constant_matches_engines() -> None:
+    """Pins the cross-module minimum-selection fact: MINIMUM_SIMULATION_SELECTION_FRAMES equals the look-direction reconstruction's requirement (the engines' n_frames_offset_for_dir_estimation + 1), so an engine that ever raises its offset fails here until the constant is bumped in the same change (cross-module consumers import the constant instead of hard-coding the refusal threshold)."""
+    assert MINIMUM_SIMULATION_SELECTION_FRAMES == 2
+    sfrs_offset = sfRSsim(
+        geom_obj=None, dem_obj=None, param_obj=SimulatorParameters()
+    ).n_frames_offset_for_dir_estimation
+    drs_offset = dRSsim(
+        geom_obj=None,
+        dem_obj=None,
+        param_obj=SimulatorParameters(),
+        simulate_chirp=False,
+    ).n_frames_offset_for_dir_estimation
+    assert MINIMUM_SIMULATION_SELECTION_FRAMES == sfrs_offset + 1
+    assert MINIMUM_SIMULATION_SELECTION_FRAMES == drs_offset + 1
 
 
 def test_frames_selection_above_empty_boundary_still_simulates(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Checks the over-refusal guard: a frames-mode selection directly above
-    the empty boundary (arange(2, 4) = two frames) still simulates and
-    prints no error."""
+    """Checks the over-refusal guards' green boundary: a frames-mode selection
+    directly above the empty boundary (arange(2, 4) = two frames, exactly the
+    n_frames_offset_for_dir_estimation + 1 minimum the look-direction
+    reconstruction needs, so just above the too-short refusal) still simulates
+    and prints no error."""
     callback = _RecordingCallback()
     sim = _TrivialSim(
         MARS_IAU2000(),

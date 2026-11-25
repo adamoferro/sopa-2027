@@ -36,6 +36,7 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 
+from sopa.exceptions import SopaDataError, SopaFileError, SopaSelectionError
 from sopa.geometry.coordinate_converter import MARS_IAU2000
 from sopa.input.sharad.data.rdr import pds_us_log
 from sopa.input.sharad.data.rdr.pds_us import RDR
@@ -197,15 +198,16 @@ def test_generate_orbit_data(
 
 
 def test_generate_orbit_data_before_ancillary(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
 ) -> None:
-    """Checks that orbit-data generation before the ancillary load reports an
-    error and leaves the orbit data unset."""
+    """Checks that orbit-data generation before the ancillary load raises
+    SopaDataError and leaves the orbit data unset."""
     _write_dataset(tmp_path)
     d, _ = _make_rdr(tmp_path)
-    assert d.generate_orbit_data() is None
-    assert "ERROR" in capsys.readouterr().out
-    assert d.orbit_data is None
+    with pytest.raises(SopaDataError) as excinfo:
+        d.generate_orbit_data()
+    assert str(excinfo.value) == "ERROR: ancillary data not yet loaded."
+    assert d._orbit_data is None
 
 
 def test_data_only_load(tmp_path: Path) -> None:
@@ -220,16 +222,25 @@ def test_data_only_load(tmp_path: Path) -> None:
 
 
 def test_missing_files_rejected(tmp_path: Path) -> None:
-    """Checks that a base filename with no files behind it returns False."""
+    """Checks that a base filename with no files behind it raises
+    SopaFileError: the geometric table in full/ancillary mode, the radargram
+    in data mode."""
     d, _ = _make_rdr(tmp_path)
-    assert d.load(mode="full") is False
-    assert d.load(mode="data") is False
+    with pytest.raises(SopaFileError) as excinfo:
+        d.load(mode="full")
+    assert str(excinfo.value) == "ERROR: orbit file not present."
+    with pytest.raises(SopaFileError) as excinfo:
+        d.load(mode="data")
+    assert (
+        str(excinfo.value) == "ERROR: header and/or aux and/or data file not present."
+    )
 
 
 def test_frame_limits_rejected(tmp_path: Path) -> None:
-    """Checks that invalid frame limits are reported and return None."""
+    """Checks that invalid frame limits are refused with SopaSelectionError."""
     _write_dataset(tmp_path)
-    d, lg = _make_rdr(tmp_path)
+    d, _ = _make_rdr(tmp_path)
     assert d.load(mode="full") is True
-    assert d._load_rdr_data(start_frame=-1) is None
-    assert any("frame" in m for m in lg.LOG_MESSAGES)
+    with pytest.raises(SopaSelectionError) as excinfo:
+        d._load_rdr_data(start_frame=-1)
+    assert str(excinfo.value) == "ERROR: start_frame and/or end_frame not valid."
