@@ -1,93 +1,130 @@
-# SOPA 2027 — SHAllow RADar Open Processing Attempt (modernized)
+# SOPA — SHAllow RADar Open Processing Attempt
 
-SOPA is a suite of open source algorithms for SHARAD (SHAllow RADar) low-level
-data processing. This tree, **SOPA_2027**, is the modernized version of the
-suite: same algorithms, same scientific outputs, brought to current coding
-standards step by step.
+![A surface clutter simulation of SHARAD orbit 1061401 produced with SOPA](docs/img/pds-edr-sim-1061401.jpg)
 
-The non-negotiable constraint of the whole modernization: **every ENVI product
-SOPA_2027 writes must be byte-identical to what SOPA_2026 writes** — verified
-mechanically by the byte-fidelity gate, never by eye. No change ships without
-a passing gate.
+*A surface clutter simulation of SHARAD orbit 1061401 from PDS EDR data, produced with SOPA.*
 
-- `SOPA_2026/` (sibling directory) is the frozen reference. It is never
-  modified; its integrity is enforced by a checksum manifest.
-- `AGENTS.md` (workspace root) and the `wiki/` describe the working model,
-  the gate, and the current phase — read them before changing anything here.
+## What is SOPA?
 
-## Status
+SOPA means SHARAD Open Processing Attempt. SOPA is thought to be a suite, let's say a *soup*, of open source algorithms for SHAllow RADar (SHARAD) low-level data processing written in Python, all sharing the same API. SHARAD is the radar sounder on board NASA's Mars Reconnaissance Orbiter.
 
-Phase 0 (2026-10-23): SOPA_2027 is a verbatim clone of SOPA_2026 — no source
-changes yet. Fidelity gate: **PASS** (16/16 files byte-identical across the
-4-configuration matrix). The phase plan lives in
-`wiki/state/project-status.md`.
+This repository is the modernized version of the suite: the same algorithms, with byte-identical scientific outputs, brought to current coding and packaging standards.
 
-## Byte-fidelity gate
+**NOTE:** This project has not been developed during my work at the University of Trento, nor it has been supported by the University of Trento in any way.
 
-From the workspace root (`/mnt/SOPA`):
+## What's in the suite
 
-```bash
-python3 tools/fidelity/fidelity_gate.py [--reuse-reference]
-```
+- **data reading** with a common interface for:
+  - [PDS Italian EDR raw data](https://pds-geosciences.wustl.edu/mro/mro-m-sharad-3-edr-v1/) (echoes and geometric data\*);
+  - [PDS Italian RDR focused data](https://pds-geosciences.wustl.edu/mro/mro-m-sharad-4-rdr-v1/) (echoes and geometric data\*);
+  - [CO-SHARPS raw data](http://psi.edu/SHARAD) (echoes and full ancillary dataset);
+  - [PDS US RDR focused data](https://pds-geosciences.wustl.edu/mro/mro-m-sharad-5-radargram-v1/mrosh_2001/) (echoes and geometric data\*\*);
+- an "essential" version of **[SOFA (SHARAD Open Focusing Attempt)](http://af-projects.it/sofa)**, a focuser that, besides standard nadir focusing, allows squinted synthetic aperture radar processing\*\*\*;
+- **surface clutter simulators**\*\*\*\*:
+  - dRSsim, a dummy radar sounder surface clutter simulator;
+  - sfRSsim, an enhanced simulator using square facets that can use a cos^exp law to weight the effect of surfaces not facing the radar;
+- **plotting tools** for quick visualization of focused radargrams, simulations, ground distance images, and first return maps superimposed to the DEM.
 
-The gate runs both codebases over a 4-configuration matrix (standard, wider
-aperture, squint +1°, squint −1°) on real SHARAD data (PDS EDR orbit 1260201 +
-MOLA128), then requires sha256-identical ENVI products. Details, matrix, and
-failure policy: `wiki/architecture/fidelity-gate.md`.
+Notes:
 
-## Requirements
+\*Orbits extracted from PDS Italian data may be not sufficiently precise for data acquired before 2013.
 
-Identical to SOPA_2026 — pinned versions are part of the fidelity contract
-(numpy 2.5.4, scipy 1.18.1, matplotlib 3.11.2, Python 3.14.4; see
-`requirements.txt`). Dependency upgrades are separate, gate-proven tasks.
+\*\*Orbits extracted from PDS US RDR data may be not sufficiently precise for supporting simulations and or focusing.
 
-## Virtual environment
+\*\*\*By now, SOFA can handle only night time radargrams as no correction of ionosphere effects has been implemented yet.
 
-`/home/ferroa/venvs/sopa_2027` (outside `/mnt/SOPA`: VirtualBox shared folders
-do not support symlinks). Recreating it (`python3.14-venv` is not installed on
-this machine):
+\*\*\*\*The simulation principles are similar to those described in [this paper](https://dx.doi.org/10.1109/TGRS.2012.2219315).
 
-```bash
-python3 -m venv --without-pip /home/ferroa/venvs/sopa_2027
-/home/ferroa/venvs/sopa_2026/bin/python -m pip --python /home/ferroa/venvs/sopa_2027/bin/python install -r requirements.txt
-```
+## Status (2027)
+
+SOPA_2027 is the modernization of the 2026 port of the original 2016–2019 suite: type hints throughout the library, a pytest suite of 288 tests, ruff for linting and formatting, and src-layout packaging (an installable `sopa` package). It runs on Python 3.14 with pinned numpy 2.5.4, scipy 1.18.1 and matplotlib 3.11.2 — `requirements.txt` is the fidelity contract, since byte-identical floating point requires identical binaries. Every product this version writes is byte-identical to the 2026 baseline; this is verified mechanically, run after run, by a byte-fidelity gate in the development workspace.
 
 ## Installation
 
-The code is a pip-installable src-layout package (`import sopa`):
+There is no PyPI release: SOPA is installed from source only. Python 3.14 is required.
 
 ```bash
-source /home/ferroa/venvs/sopa_2027/bin/activate
-pip install --no-deps -e /mnt/SOPA/SOPA_2027
+git clone https://github.com/adamoferro/sopa-2027.git
+cd sopa-2027
+python3.14 -m venv .venv
+source .venv/bin/activate
+pip install -e .
 ```
 
-`--no-deps` leaves the pinned environment of `requirements.txt` untouched.
-The scripts in `tests/` and the `run_sopa_processing_2610.py` example also run
-from the tree without any install (they add `src/` to `sys.path` themselves).
+For development, install the test extra (`pip install -e ".[test]"`) to also get pytest. Interactive plotting uses the Qt backend (`pip install -e ".[qt]"`); without a display the plot windows are simply skipped and the products are still written to disk.
 
-## Running
+## Usage
+
+Reading data through the common interface (here a PDS Italian EDR product; the reader derives the label, ancillary and data file names from `filename_base`):
+
+```python
+from sopa.input.sharad.data.edr.pds import EDR
+from sopa.log.log import logger
+
+lg = logger(verbose=True)
+
+d = EDR(
+    dataset_name="edr1260201",
+    filename_base="/data/sharad/edr1260201/e_1260201_001_ss19_700_a",  # base name, without suffixes
+    logger=lg,
+)
+d.load(mode="full")        # echoes + orbit ancillary data
+d.generate_orbit_data()    # spacecraft orbit derived from the geometric data
+
+print(d.data.shape)        # the echoes, as a numpy array
+```
+
+An example program running the complete processing chain end to end — EDR load, orbit data generation, sfRSsim simulation, SOFA focusing, ENVI output and the companion plots — is in the root of the project: `run_sopa_processing_2610.py`. It needs a real SHARAD product and the MOLA128 DEM: edit the input path constants near the top of its `main()` to point at your data. It runs on a single core and takes hours.
+
+Two dataless checks, useful right after installation:
 
 ```bash
-source /home/ferroa/venvs/sopa_2027/bin/activate
-cd /mnt/SOPA/SOPA_2027
-python run_sopa_processing_2610.py    # full example (hours, single core)
-python tests/real_data_test.py        # real data, reduced range (~2 min)
-python tests/smoke_test.py            # fully synthetic (~1 min)
+pytest tests/test_smoke.py    # the whole chain on fully synthetic data, ~1 min
+pytest -m "not realdata"      # the full dataless test suite (~2 min, no real data needed)
 ```
 
-Plots are interactive (matplotlib Qt backend via PyQt6); headless runs select
-the Agg backend automatically in the test scripts — set `MPLBACKEND=Agg`
-yourself elsewhere.
+The test suite selects the non-interactive matplotlib backend automatically, so it runs headless.
 
-## Provenance
+## Example gallery
 
-SOPA was written by Adamo Ferro (2016–2019, `SOPA_OLD/`), ported to a current
-stack in 2026 (`SOPA_2026/`), and is modernized as `SOPA_2027` under the
-GPLv3 and the acknowledgment clause below.
+All figures below are outputs of the 2019 suite, computed from CO-SHARPS observation 0894601 (input data downloaded from [CO-SHARPS](http://psi.edu/SHARAD)). Images © Adamo Ferro.
+
+**Surface clutter simulation of SHARAD radargram 0894601 using SOPA's dummy RS simulator (dRSsim)**
+
+![Surface clutter simulation of SHARAD radargram 0894601 using dRSsim](docs/img/sim.png)
+
+**Surface clutter simulation of SHARAD radargram 0894601 using SOPA's square facet RS simulator (sfRSsim)**
+
+![Surface clutter simulation of SHARAD radargram 0894601 using sfRSsim](docs/img/sim_sf.png)
+
+**SHARAD radargram 0894601 focused using SOPA's focuser (SOFA)**
+
+![SHARAD radargram 0894601 focused using SOPA's focuser (SOFA)](docs/img/rdr.png)
+
+**Spacecraft track of radargram 0894601 and estimated positions of first returns superimposed to MOLA DEM**
+
+![Spacecraft track of radargram 0894601 and estimated positions of first returns superimposed to MOLA DEM](docs/img/track_and_first-returns.png)
+
+**Minimum ground distance from the nadir point of the surface clutter contributions for each simulation sample**
+
+![Minimum ground distance from the nadir point of the surface clutter contributions for each simulation sample](docs/img/ground_distance.png)
+
+## Project history
+
+- **2016–2019** — SOPA, the original suite ([github.com/adamoferro/sopa](https://github.com/adamoferro/sopa)), presented on [af-projects.it/sopa](http://af-projects.it/sopa) with an [examples page](http://af-projects.it/sopa-examples). Its README is kept at the bottom of this page.
+- **2026** — SOPA_2026, a port of the original code to the current stack (Python 3.14, numpy 2.5.4, scipy 1.18.1, matplotlib 3.11.2), kept as the frozen fidelity baseline.
+- **2027** — SOPA_2027, this repository: the modernization of the port, one verified step at a time, with byte-identical outputs.
+- A self-hosted web application built on top of this library lets users upload SHARAD files and run the processing from a browser.
+
+## License and acknowledgment
+
+SOPA is free software, distributed under the [GNU General Public License v3](LICENSE) (GPLv3 or later). Copyright © 2016–2026 Adamo Ferro.
+
+> The use of SOPA or part of it for the creation of any sub-product (e.g., scientific papers, posters, images, other softwares) must be acknowledged.
 
 ---
 
-# SOPA (original README, kept for reference)
+# SOPA (original 2019 README, kept for reference)
 
 SOPA is thought to be a suite of open source algorithms for SHAllow RADar (SHARAD) low-level data processing written in python v3.
 
